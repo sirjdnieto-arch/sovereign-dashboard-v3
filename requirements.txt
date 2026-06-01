@@ -1,0 +1,8 @@
+# requirements.txt — Sovereign Dashboard v3
+streamlit>=1.32.0
+yfinance>=0.2.40
+pandas>=2.0.0
+numpy>=1.26.0
+matplotlib>=3.8.0
+ta>=0.11.0
+wcwidth>=0.2.13
