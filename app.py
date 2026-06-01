@@ -606,25 +606,28 @@ def color_señal(val: str) -> str:
     return f"color: {col}; font-weight: bold"
 
 
-def style_df(df: pd.DataFrame) -> "pd.io.formats.style.Styler":
+def style_df(df: pd.DataFrame):
+    styler = df.style
+    # compatible pandas <2.1 (applymap) y >=2.1 (map)
+    fn = styler.map if hasattr(styler, "map") else styler.applymap
     return (
-        df.style
-          .map(color_señal, subset=["Señal"])
-          .set_properties(**{
-              "background-color": "#13161e",
-              "color": "#c8cad0",
-              "border-color": "#1f2430",
-              "font-size": "0.82rem",
-          })
-          .set_table_styles([{
-              "selector": "th",
-              "props": [("background-color", "#0d0f14"),
-                        ("color", "#efb030"),
-                        ("font-size", "0.85rem"),
-                        ("border-bottom", "1px solid #1f2430")],
-          }])
+        fn(color_señal, subset=["Señal"])
+        .set_properties(**{
+            "background-color": "#13161e",
+            "color":            "#c8cad0",
+            "border-color":     "#1f2430",
+            "font-size":        "0.82rem",
+        })
+        .set_table_styles([{
+            "selector": "th",
+            "props": [
+                ("background-color", "#0d0f14"),
+                ("color",            "#efb030"),
+                ("font-size",        "0.85rem"),
+                ("border-bottom",    "1px solid #1f2430"),
+            ],
+        }])
     )
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR  —  controles globales
