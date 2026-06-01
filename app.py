@@ -609,7 +609,7 @@ def color_señal(val: str) -> str:
 def style_df(df: pd.DataFrame) -> "pd.io.formats.style.Styler":
     return (
         df.style
-          .applymap(color_señal, subset=["Señal"])
+          .map(color_señal, subset=["Señal"])
           .set_properties(**{
               "background-color": "#13161e",
               "color": "#c8cad0",
@@ -762,7 +762,7 @@ with tab1:
 
         with st.expander("📝 Ver Razones detalladas"):
             st.dataframe(
-                df_show[cols_razon].style.applymap(color_señal, subset=["Señal"]),
+                df_show[cols_razon].style.map(color_señal, subset=["Señal"]),
                 use_container_width=True,
             )
 
