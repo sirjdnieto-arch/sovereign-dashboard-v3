@@ -1,0 +1,61 @@
+# .github/workflows/scheduled_run.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Ejecución diaria automática:
+#   1. Genera el CSV del semáforo (snapshot)
+#   2. Genera PNG de un ticker de referencia (NVDA)
+#   3. Hace commit del artifact → queda en el repo como histórico
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Daily Sovereign Snapshot
+
+on:
+  schedule:
+    - cron: "30 15 * * 1-5"   # 15:30 UTC = cierre NY, lunes-viernes
+  workflow_dispatch:            # permite disparo manual desde GitHub UI
+
+permissions:
+  contents: write               # necesario para el commit de artifacts
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30         # el loop de 105 tickers puede tardar ~15 min
+
+    steps:
+      # ── 1. checkout ──────────────────────────────────────────────────────
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # ── 2. Python ────────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # ── 3. Dependencias ──────────────────────────────────────────────────
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── 4. Ejecutar snapshot ─────────────────────────────────────────────
+      - name: Run daily snapshot
+        run: python scripts/daily_snapshot.py
+        env:
+          PYTHONUNBUFFERED: "1"
+
+      # ── 5. Commit artifacts ──────────────────────────────────────────────
+      - name: Commit snapshot artifacts
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add snapshots/
+          git diff --cached --quiet || git commit -m "📊 Daily snapshot $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push
+
+      # ── 6. Upload como GitHub Artifact (30 días) ─────────────────────────
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovereign-snapshot-${{ github.run_number }}
+          path: snapshots/
+          retention-days: 30
