@@ -764,10 +764,12 @@ with tab1:
         )
 
         with st.expander("📝 Ver Razones detalladas"):
-            st.dataframe(
-                df_show[cols_razon].style.map(color_señal, subset=["Señal"]),
-                use_container_width=True,
-            )
+    _s  = df_show[cols_razon].style
+    _fn = _s.map if hasattr(_s, "map") else _s.applymap
+    st.dataframe(
+        _fn(color_señal, subset=["Señal"]),
+        use_container_width=True,
+    )
 
         # ── leyenda ──────────────────────────────────────────────────────
         st.markdown("""
