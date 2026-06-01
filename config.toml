@@ -1,0 +1,17 @@
+# .streamlit/config.toml
+[theme]
+base            = "dark"
+backgroundColor = "#0d0f14"
+secondaryBackgroundColor = "#13161e"
+textColor       = "#c8cad0"
+primaryColor    = "#efb030"
+font            = "monospace"
+
+[server]
+headless       = true
+enableCORS     = false
+enableXsrfProtection = true
+
+[runner]
+# Evita warnings de matplotlib en Streamlit Cloud
+magicEnabled = false
