@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Sovereign Dashboard v3  —  Streamlit  —  2 pestañas
 #   Tab 1 : Semáforo texto  (todos los tickers)
-#   Tab 2 : Gráfico multi-panel  (multiselector de tickers)
+#   Tab 2 : Gráfico multi-panel  (selector dentro de la pestaña)
 # ─────────────────────────────────────────────────────────────────────────────
 
 import warnings
@@ -63,19 +63,19 @@ st.markdown("""
 # ══════════════════════════════════════════════════════════════════════════════
 
 STYLE = dict(
-    bg="#0d0f14",       panel="#13161e",     border="#1f2430",
-    bull="#26a65b",     bear="#e04040",
-    bull_fade="#26a65b55",                   bear_fade="#e0404055",
-    mcg="#efb030",      ema200="#6060dd",
-    text="#c8cad0",     muted="#555a6a",
-    verde="#2ca85e",    marron="#a06432",
-    azul="#4488e0",     media_k="#ffffff",
-    pvi="#6090e0",      pvi_ema="#efb030",
-    macd_line="#6090e0",macd_sig="#efb030",
-    rsi="#a78bfa",      adx="#a78bfa",
-    pdi="#26a65b",      ndi="#e04040",
-    ao_up="#26a65b",    ao_dn="#e04040",
-    grid="#1a1e28",     zero="#2a2e3a",
+    bg="#0d0f14",        panel="#13161e",      border="#1f2430",
+    bull="#26a65b",      bear="#e04040",
+    bull_fade="#26a65b55",                      bear_fade="#e0404055",
+    mcg="#efb030",       ema200="#6060dd",
+    text="#c8cad0",      muted="#555a6a",
+    verde="#2ca85e",     marron="#a06432",
+    azul="#4488e0",      media_k="#ffffff",
+    pvi="#6090e0",       pvi_ema="#efb030",
+    macd_line="#6090e0", macd_sig="#efb030",
+    rsi="#a78bfa",       adx="#a78bfa",
+    pdi="#26a65b",       ndi="#e04040",
+    ao_up="#26a65b",     ao_dn="#e04040",
+    grid="#1a1e28",      zero="#2a2e3a",
 )
 
 plt.rcParams.update({
@@ -151,21 +151,21 @@ def cached_chart_data(ticker: str, period: str = "2y") -> dict:
 
     close, high, low, volume = df["Close"], df["High"], df["Low"], df["Volume"]
 
-    mcg25         = mcginley_dynamic(close, 25)
-    ema200        = EMAIndicator(close=close, window=200).ema_indicator()
-    adx_ind       = ADXIndicator(high=high, low=low, close=close, window=14)
-    adx_s         = adx_ind.adx()
-    pdi_s         = adx_ind.adx_pos()
-    ndi_s         = adx_ind.adx_neg()
-    ao_s          = awesome_osc(high, low)
-    bitman        = clasificar_bitman(df)
-    div_df        = detectar_divergencia_simple(df)
-    _, bbwp_s     = calculate_bbwp(close, bb_len=13, lookback=252)
-    konc          = compute_blai5_koncorde(df, m=15)
-    pvi_s         = calculate_pvi(close, volume)
-    pvi_ema       = pvi_s.ewm(span=25, adjust=False).mean()
-    macd_obj      = MACD(close=close, window_fast=12, window_slow=26, window_sign=9)
-    rsi_s         = RSIIndicator(close=close, window=14).rsi()
+    mcg25     = mcginley_dynamic(close, 25)
+    ema200    = EMAIndicator(close=close, window=200).ema_indicator()
+    adx_ind   = ADXIndicator(high=high, low=low, close=close, window=14)
+    adx_s     = adx_ind.adx()
+    pdi_s     = adx_ind.adx_pos()
+    ndi_s     = adx_ind.adx_neg()
+    ao_s      = awesome_osc(high, low)
+    bitman    = clasificar_bitman(df)
+    div_df    = detectar_divergencia_simple(df)
+    _, bbwp_s = calculate_bbwp(close, bb_len=13, lookback=252)
+    konc      = compute_blai5_koncorde(df, m=15)
+    pvi_s     = calculate_pvi(close, volume)
+    pvi_ema   = pvi_s.ewm(span=25, adjust=False).mean()
+    macd_obj  = MACD(close=close, window_fast=12, window_slow=26, window_sign=9)
+    rsi_s     = RSIIndicator(close=close, window=14).rsi()
 
     return dict(
         df=df, mcg25=mcg25, ema200=ema200,
@@ -230,7 +230,8 @@ def build_signals(data: dict) -> list:
     p = close.iloc[-1]
 
     def sig(label, bull, neutral=False):
-        return {"label": label, "state": "neutral" if neutral else ("bull" if bull else "bear")}
+        return {"label": label,
+                "state": "neutral" if neutral else ("bull" if bull else "bear")}
 
     sigs = [
         sig(f"precio {'>' if p >= mcg25.iloc[-1] else '<'} MCG25",   p >= mcg25.iloc[-1]),
@@ -239,8 +240,10 @@ def build_signals(data: dict) -> list:
 
     r = rsi_s.iloc[-1]
     sigs.append(sig(f"RSI {r:.1f}", r > 50, neutral=45 < r < 55))
-    sigs.append(sig(f"MACD hist {'↑' if macd_h.iloc[-1] >= 0 else '↓'}", macd_h.iloc[-1] >= 0))
-    sigs.append(sig(f"MACD línea {'≥0' if macd_l.iloc[-1] >= 0 else '<0'}", macd_l.iloc[-1] >= 0))
+    sigs.append(sig(f"MACD hist {'↑' if macd_h.iloc[-1] >= 0 else '↓'}",
+                    macd_h.iloc[-1] >= 0))
+    sigs.append(sig(f"MACD línea {'≥0' if macd_l.iloc[-1] >= 0 else '<0'}",
+                    macd_l.iloc[-1] >= 0))
 
     if not konc.empty:
         sigs.append(sig(
@@ -258,16 +261,15 @@ def build_signals(data: dict) -> list:
     ))
 
     a = adx_s.iloc[-1]
-    sigs.append(sig(f"ADX {a:.1f} {'fuerte' if a > 25 else 'débil'}", a > 25, neutral=18 < a < 25))
+    sigs.append(sig(f"ADX {a:.1f} {'fuerte' if a > 25 else 'débil'}",
+                    a > 25, neutral=18 < a < 25))
 
     if bitman is not None and not bitman.empty:
         b_etiq = bitman["Bitman_Etiqueta"].iloc[-1]
         b_v    = int(bitman["Bitman_Velas"].iloc[-1])
         b_bull = b_etiq in ("IMPULSO ALCISTA", "RETROCESO ALCISTA")
-        sigs.append(sig(
-            f"Bitman {b_etiq[:8]} ({b_v}v)", b_bull,
-            neutral=(b_etiq == "INDEFINICIÓN"),
-        ))
+        sigs.append(sig(f"Bitman {b_etiq[:8]} ({b_v}v)", b_bull,
+                        neutral=(b_etiq == "INDEFINICIÓN")))
 
     if div_df is not None:
         dt = div_df["divergencia_tipo"].iloc[-1]
@@ -317,7 +319,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
     macd_hist = data["macd_hist"]
     rsi_s     = data["rsi_s"]
 
-    sigs                            = build_signals(data)
+    sigs                              = build_signals(data)
     pct, score_label, bull_n, total_n = score_signals(sigs)
     score_color = (STYLE["bull"] if pct >= 60
                    else (STYLE["bear"] if pct < 40 else STYLE["mcg"]))
@@ -335,7 +337,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
     for i in range(6):
         axes[i].tick_params(labelbottom=False)
 
-    # ── título ────────────────────────────────────────────────────────────
+    # título
     last_p  = close.iloc[-1]
     prev_p  = close.iloc[-2]
     chg     = last_p - prev_p
@@ -351,7 +353,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
     fig.text(0.97, 0.965, f"{score_label}  ·  {bull_n}/{total_n}  ({pct}%)",
              fontsize=11, color=score_color, ha="right", va="bottom", style="italic")
 
-    # ── PANEL 0 — Velas + MCG25 + EMA200 ──────────────────────────────────
+    # PANEL 0 — Velas + MCG25 + EMA200
     ax0 = axes[0]
     w   = 0.4
     for i, (_, row) in enumerate(df_plot.iterrows()):
@@ -373,7 +375,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
     format_xaxis(ax0, idx)
     ax0.tick_params(labelbottom=True)
 
-    # ── PANEL 1 — ADX + AO ────────────────────────────────────────────────
+    # PANEL 1 — ADX + AO
     ax1  = axes[1]
     ax1r = ax1.twinx()
     ao_v = sv(ao_s, idx)
@@ -395,7 +397,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
     ax1.set_title("ADX  ·  +DI / -DI  ·  Awesome Oscillator",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
 
-    # ── PANEL 2 — Koncorde ────────────────────────────────────────────────
+    # PANEL 2 — Koncorde
     ax2 = axes[2]
     if not konc.empty:
         for key, col in [("verde",  STYLE["verde"]),
@@ -414,7 +416,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
     ax2.set_title("Blai5 Koncorde  ·  Verde / Marrón / Azul / Media",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
 
-    # ── PANEL 3 — BBWP 13/252 ─────────────────────────────────────────────
+    # PANEL 3 — BBWP 13/252
     ax3    = axes[3]
     bbwp_v = sv(bbwp_s, idx)
     ax3.fill_between(xs, bbwp_v, 20,
@@ -427,7 +429,8 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
         if np.isnan(bbwp_v[i]) or np.isnan(bbwp_v[i - 1]):
             continue
         mid = (bbwp_v[i] + bbwp_v[i - 1]) / 2
-        lc  = STYLE["azul"] if mid < 20 else (STYLE["bear"] if mid > 80 else STYLE["muted"])
+        lc  = (STYLE["azul"] if mid < 20
+               else (STYLE["bear"] if mid > 80 else STYLE["muted"]))
         ax3.plot([xs[i - 1], xs[i]], [bbwp_v[i - 1], bbwp_v[i]],
                  color=lc, lw=1.5, zorder=3)
     ax3.axhline(80, color=STYLE["bear"],  lw=0.7, ls="--", alpha=0.6)
@@ -439,7 +442,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
     ax3.set_title("BBWP 13/252  ·  🟢 compresión < 20  ·  🔴 expansión > 80",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
 
-    # ── PANEL 4 — PVI + EMA25 ─────────────────────────────────────────────
+    # PANEL 4 — PVI + EMA25
     ax4   = axes[4]
     pvi_v = sv(pvi_s,   idx)
     pvi_e = sv(pvi_ema, idx)
@@ -455,7 +458,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
     ax4.set_title("PVI  ·  EMA 25",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
 
-    # ── PANEL 5 — MACD ────────────────────────────────────────────────────
+    # PANEL 5 — MACD
     ax5    = axes[5]
     hist_v = sv(macd_hist, idx)
     hist_p = np.roll(hist_v, 1); hist_p[0] = hist_v[0]
@@ -480,7 +483,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
     ax5.set_title("MACD  12 / 26 / 9",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
 
-    # ── PANEL 6 — RSI + divergencias ──────────────────────────────────────
+    # PANEL 6 — RSI + divergencias
     ax6   = axes[6]
     rsi_v = sv(rsi_s, idx)
     ax6.fill_between(xs, rsi_v, 70, where=(rsi_v > 70), alpha=0.25, color=STYLE["bull"])
@@ -488,7 +491,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
     ax6.plot(xs, rsi_v, color=STYLE["rsi"], lw=1.4)
     for lvl, col, ls in [(70, STYLE["bear"], "--"),
                          (50, STYLE["muted"], ":"),
-                         (30, STYLE["bull"], "--")]:
+                         (30, STYLE["bull"],  "--")]:
         ax6.axhline(lvl, color=col, lw=0.7, ls=ls)
     if div_df is not None:
         rsi_aligned = sv(rsi_s, idx)
@@ -517,7 +520,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
     for ax in axes:
         ax.set_xlim(-1, len(idx))
 
-    # ── recuadro informativo ──────────────────────────────────────────────
+    # recuadro informativo
     _precio   = close.iloc[-1]
     _mcg_val  = mcg25.iloc[-1]
     _e200_val = ema200.iloc[-1]
@@ -528,8 +531,8 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
         _area_max  = konc[["verde", "marron", "azul"]].max(axis=1)
         _area_min  = konc[["verde", "marron", "azul"]].min(axis=1)
         _media_val = konc["media"].iloc[-1]
-        _pk = ("🟢" if (not pd.isna(_media_val) and
-                        _area_min.iloc[-1] <= _media_val <= _area_max.iloc[-1])
+        _pk = ("🟢" if (not pd.isna(_media_val)
+                        and _area_min.iloc[-1] <= _media_val <= _area_max.iloc[-1])
                else "🔴")
     else:
         _pk = "⚪"
@@ -594,7 +597,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
                  color=score_color if li == 6 else STYLE["text"],
                  va="top", family="monospace")
 
-    # ── barra de señales ──────────────────────────────────────────────────
+    # barra de señales
     x0  = 0.07
     gap = (0.97 - x0) / len(sigs)
     for i, s in enumerate(sigs):
@@ -613,7 +616,7 @@ def build_figure(data: dict, ticker: str) -> plt.Figure:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ESTILO DE TABLA — Tab 1
+# ESTILO DE TABLA
 # ══════════════════════════════════════════════════════════════════════════════
 
 SEÑAL_COLOR = {
@@ -658,14 +661,12 @@ def style_df(df: pd.DataFrame):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR
+# SIDEBAR  —  solo controles de Tab 1
 # ══════════════════════════════════════════════════════════════════════════════
 
 with st.sidebar:
-    st.markdown("## ⚙️ Configuración")
+    st.markdown("## ⚙️ Configuración semáforo")
     st.markdown("---")
-
-    st.markdown("### 📋 Tab 1 — Semáforo")
     grupo_sel = st.selectbox(
         "Grupo de tickers",
         options=list(GRUPOS.keys()),
@@ -678,24 +679,6 @@ with st.sidebar:
         key="custom_tickers",
     )
     force_refresh_tab1 = st.button("🔄 Recalcular semáforo", key="refresh1")
-
-    st.markdown("---")
-    st.markdown("### 📈 Tab 2 — Gráficos")
-
-    chart_tickers = st.multiselect(
-        "Tickers para gráfico (uno o varios)",
-        options=sorted(ALL_TICKERS),
-        default=["NVDA"],
-        key="chart_tickers",
-    )
-    chart_period = st.selectbox(
-        "Período",
-        options=["1y", "2y", "5y"],
-        index=1,
-        key="chart_period",
-    )
-    force_refresh_tab2 = st.button("🔄 Recalcular gráficos", key="refresh2")
-
     st.markdown("---")
     st.markdown(
         "<small>Datos: Yahoo Finance  ·  Caché 1h<br>"
@@ -715,7 +698,7 @@ tab1, tab2 = st.tabs([
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 1
+# TAB 1 — Semáforo
 # ─────────────────────────────────────────────────────────────────────────────
 
 with tab1:
@@ -743,9 +726,7 @@ with tab1:
     with st.spinner(f"Calculando {len(tickers_tab1)} tickers…"):
         progress_bar = st.progress(0)
         status_text  = st.empty()
-
-        df_result = cached_dashboard(cache_key)
-
+        df_result    = cached_dashboard(cache_key)
         progress_bar.progress(100)
         status_text.empty()
 
@@ -779,10 +760,8 @@ with tab1:
         with st.expander("📝 Ver Razones detalladas"):
             _s  = df_show[cols_razon].style
             _fn = _s.map if hasattr(_s, "map") else _s.applymap
-            st.dataframe(
-                _fn(color_señal, subset=["Señal"]),
-                use_container_width=True,
-            )
+            st.dataframe(_fn(color_señal, subset=["Señal"]),
+                         use_container_width=True)
 
         st.markdown("""
 ---
@@ -802,26 +781,51 @@ with tab1:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 2
+# TAB 2 — Gráficos  (selector DENTRO de la pestaña, siempre visible)
 # ─────────────────────────────────────────────────────────────────────────────
 
 with tab2:
     st.markdown("## 📈 Gráficos multi-panel")
+
+    # ── SELECTOR VISIBLE AL ENTRAR EN LA PESTAÑA ─────────────────────────
+    col_sel1, col_sel2, col_sel3 = st.columns([5, 1, 1])
+
+    with col_sel1:
+        chart_tickers = st.multiselect(
+            "📌 Selecciona uno o varios tickers para graficar",
+            options=sorted(ALL_TICKERS),
+            default=["NVDA"],
+            key="chart_tickers",
+        )
+    with col_sel2:
+        chart_period = st.selectbox(
+            "Período",
+            options=["1y", "2y", "5y"],
+            index=1,
+            key="chart_period",
+        )
+    with col_sel3:
+        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        force_refresh_tab2 = st.button("🔄 Recalcular", key="refresh2")
+
     st.caption(
-        "7 paneles por ticker: Velas+MCG25+EMA200 · ADX+AO · Koncorde · "
+        "7 paneles: Velas+MCG25+EMA200 · ADX+AO · Koncorde · "
         "BBWP 13/252 · PVI+EMA25 · MACD 12/26/9 · RSI14+divergencias"
     )
+    st.markdown("---")
 
+    # ── GUARDIA: sin selección ────────────────────────────────────────────
     if not chart_tickers:
-        st.info("👈 Selecciona al menos un ticker en el panel lateral izquierdo.")
+        st.info("👆 Selecciona al menos un ticker en el selector de arriba.")
         st.stop()
 
     if force_refresh_tab2:
         cached_chart_data.clear()
 
+    # ── BUCLE POR TICKER ─────────────────────────────────────────────────
     for chart_ticker in chart_tickers:
 
-        st.markdown(f"---\n### 📊 {chart_ticker}")
+        st.markdown(f"### 📊 {chart_ticker}")
 
         with st.spinner(f"Calculando indicadores para {chart_ticker}…"):
             chart_data = cached_chart_data(chart_ticker, period=chart_period)
@@ -833,7 +837,7 @@ with tab2:
             )
             continue
 
-        # ── métricas rápidas ──────────────────────────────────────────────
+        # métricas rápidas
         df_c   = chart_data["df"]
         close  = df_c["Close"]
         m1, m2, m3, m4, m5 = st.columns(5)
@@ -847,7 +851,8 @@ with tab2:
         rsi_val = chart_data["rsi_s"].iloc[-1]
         m2.metric(
             "RSI 14", f"{rsi_val:.1f}",
-            "Sobrecompra" if rsi_val > 70 else ("Sobreventa" if rsi_val < 30 else "Neutral"),
+            "Sobrecompra" if rsi_val > 70 else
+            ("Sobreventa" if rsi_val < 30 else "Neutral"),
         )
 
         bbwp_v = chart_data["bbwp_s"].dropna()
@@ -855,29 +860,25 @@ with tab2:
         m3.metric(
             "BBWP 13/252",
             f"{bbwp_l:.1f}%" if not np.isnan(bbwp_l) else "n/d",
-            "compresión" if bbwp_l < 20 else ("expansión" if bbwp_l > 80 else "normal"),
+            "compresión" if bbwp_l < 20 else
+            ("expansión" if bbwp_l > 80 else "normal"),
         )
 
         mcg_v = chart_data["mcg25"].iloc[-1]
-        m4.metric(
-            "McGinley 25", f"{mcg_v:.2f}",
-            "↑ precio sobre" if last_p > mcg_v else "↓ precio bajo",
-        )
+        m4.metric("McGinley 25", f"{mcg_v:.2f}",
+                  "↑ precio sobre" if last_p > mcg_v else "↓ precio bajo")
 
         e200_v = chart_data["ema200"].iloc[-1]
-        m5.metric(
-            "EMA 200", f"{e200_v:.2f}",
-            "↑ precio sobre" if last_p > e200_v else "↓ precio bajo",
-        )
+        m5.metric("EMA 200", f"{e200_v:.2f}",
+                  "↑ precio sobre" if last_p > e200_v else "↓ precio bajo")
 
-        # ── figura matplotlib ──────────────────────────────────────────────
-        with st.spinner(f"Renderizando gráfico {chart_ticker}…"):
+        # figura
+        with st.spinner(f"Renderizando {chart_ticker}…"):
             fig = build_figure(chart_data, chart_ticker)
-
         st.pyplot(fig, use_container_width=True)
         plt.close(fig)
 
-        # ── barra de señales ───────────────────────────────────────────────
+        # barra de señales
         st.markdown("#### Señales actuales")
         sigs = build_signals(chart_data)
         pct_s, label_s, bull_n, total_n = score_signals(sigs)
@@ -892,26 +893,27 @@ with tab2:
                 unsafe_allow_html=True,
             )
 
-        score_col = "green" if pct_s >= 60 else ("red" if pct_s < 40 else "orange")
+        score_col = ("green" if pct_s >= 60 else
+                     "red"   if pct_s < 40  else "orange")
         st.markdown(
             f"<h4 style='color:{score_col};text-align:center;'>"
             f"{label_s}  ·  {bull_n}/{total_n}  ({pct_s}%)</h4>",
             unsafe_allow_html=True,
         )
 
-        # ── botón de descarga ──────────────────────────────────────────────
+        # descarga PNG
         buf = io.BytesIO()
         fig_dl = build_figure(chart_data, chart_ticker)
-        fig_dl.savefig(
-            buf, format="png", dpi=150,
-            bbox_inches="tight", facecolor=STYLE["bg"],
-        )
+        fig_dl.savefig(buf, format="png", dpi=150,
+                       bbox_inches="tight", facecolor=STYLE["bg"])
         plt.close(fig_dl)
         buf.seek(0)
         st.download_button(
             label=f"⬇️ Descargar PNG — {chart_ticker}",
             data=buf,
-            file_name=f"sovereign_{chart_ticker.replace('=', '').replace('-', '_')}.png",
+            file_name=f"sovereign_{chart_ticker.replace('=','').replace('-','_')}.png",
             mime="image/png",
             key=f"dl_{chart_ticker}",
         )
+
+        st.markdown("---")
