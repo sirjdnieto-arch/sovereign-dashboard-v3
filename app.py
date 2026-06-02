@@ -60,11 +60,6 @@ st.markdown("""
     /* razones: scroll horizontal */
     .stDataFrame { overflow-x: auto !important; }
 
-    /* tabs */
-    div[data-testid="stTab"] button {
-        font-weight: bold; font-size: 1rem; color: #c8cad0;
-    }
-
     /* métricas en blanco */
     [data-testid="stMetricValue"]  { color: #ffffff !important; }
     [data-testid="stMetricDelta"]  { color: #c8cad0 !important; }
@@ -79,12 +74,62 @@ st.markdown("""
     /* caption */
     .stCaption { color: #aaaaaa !important; }
 
+    /* ═══════════════════════════════════════
+       PESTAÑAS
+    ═══════════════════════════════════════ */
+
+    /* barra contenedora */
+    div[data-baseweb="tab-list"] {
+        background-color: #0d0f14 !important;
+        border-bottom: 2px solid #efb030 !important;
+        gap: 6px !important;
+        padding-bottom: 0px !important;
+    }
+
+    /* pestaña inactiva */
+    button[data-baseweb="tab"] {
+        background-color: #1a1e2e !important;
+        color: #aaaaaa !important;
+        font-size: 1rem !important;
+        font-weight: bold !important;
+        font-family: monospace !important;
+        letter-spacing: 0.05em !important;
+        padding: 10px 28px !important;
+        border-radius: 6px 6px 0px 0px !important;
+        border: 1px solid #2a2e45 !important;
+        border-bottom: none !important;
+        transition: background-color 0.2s, color 0.2s !important;
+    }
+
+    /* pestaña inactiva hover */
+    button[data-baseweb="tab"]:hover {
+        background-color: #252a3a !important;
+        color: #efb030 !important;
+    }
+
+    /* pestaña ACTIVA */
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background-color: #efb030 !important;
+        color: #0d0f14 !important;
+        border-color: #efb030 !important;
+        font-size: 1.05rem !important;
+    }
+
+    /* quitar subrayado azul por defecto */
+    button[data-baseweb="tab"][aria-selected="true"]::after {
+        display: none !important;
+    }
+
     /* responsive móvil */
     @media (max-width: 768px) {
         .stDataFrame tbody td { font-size: 0.65rem !important; }
         h2 { font-size: 1.1rem !important; }
         h3 { font-size: 1rem !important; }
         [data-testid="stMetricValue"] { font-size: 1rem !important; }
+        button[data-baseweb="tab"] {
+            font-size: 0.8rem !important;
+            padding: 8px 12px !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -105,7 +150,7 @@ STYLE = dict(
     pvi="#6090e0",       pvi_ema="#efb030",
     macd_line="#6090e0", macd_sig="#efb030",
     rsi="#a78bfa",
-    adx="#ffffff",       # ← blanco (era morado)
+    adx="#ffffff",
     pdi="#26a65b",       ndi="#e04040",
     ao_up="#26a65b",     ao_dn="#e04040",
     vol="#3a6ea8",       vol_ma="#efb030",
@@ -117,8 +162,8 @@ plt.rcParams.update({
     "axes.facecolor":   STYLE["panel"],
     "axes.edgecolor":   STYLE["border"],
     "axes.labelcolor":  STYLE["muted"],
-    "xtick.color":      "#ffffff",   # eje X en blanco puro
-    "ytick.color":      "#ffffff",   # eje Y en blanco puro
+    "xtick.color":      "#ffffff",
+    "ytick.color":      "#ffffff",
     "text.color":       STYLE["text"],
     "grid.color":       STYLE["grid"],
     "grid.linewidth":   0.5,
@@ -167,21 +212,17 @@ GRUPOS = {
     "Crypto / Materias": ["GC=F","SI=F","BTC-USD","ETH-USD","XRP-USD","CRCL"],
 }
 
-# ── Configuración de intervalos ───────────────────────────────────────────────
+
 INTERVAL_CONFIG = {
-    "1D": {"yf_interval": "1d",  "yf_period": "2y",  "resample": None,
-           "label": "Diario"},
-    "1W": {"yf_interval": "1wk", "yf_period": "5y",  "resample": None,
-           "label": "Semanal"},
-    "4h": {"yf_interval": "1h",  "yf_period": "60d", "resample": "4h",
-           "label": "4 horas"},
-    "1h": {"yf_interval": "1h",  "yf_period": "30d", "resample": None,
-           "label": "1 hora"},
+    "1D": {"yf_interval": "1d",  "yf_period": "2y",  "resample": None,  "label": "Diario"},
+    "1W": {"yf_interval": "1wk", "yf_period": "5y",  "resample": None,  "label": "Semanal"},
+    "4h": {"yf_interval": "1h",  "yf_period": "60d", "resample": "4h",  "label": "4 horas"},
+    "1h": {"yf_interval": "1h",  "yf_period": "30d", "resample": None,  "label": "1 hora"},
 }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DESCARGA CON SOPORTE DE INTERVALOS E INTRADAY
+# DESCARGA
 # ══════════════════════════════════════════════════════════════════════════════
 
 import yfinance as yf
@@ -199,17 +240,11 @@ def download_ohlcv(ticker: str, interval_key: str = "1D") -> pd.DataFrame:
     df = clean_yf_df(df)
     if df.empty:
         return df
-
-    # resampleo 4h
     if cfg["resample"]:
         df = df.resample(cfg["resample"]).agg({
-            "Open":  "first",
-            "High":  "max",
-            "Low":   "min",
-            "Close": "last",
-            "Volume":"sum",
+            "Open": "first", "High": "max",
+            "Low": "min", "Close": "last", "Volume": "sum",
         }).dropna()
-
     return df
 
 
@@ -243,11 +278,9 @@ def cached_chart_data(ticker: str, interval_key: str = "1D") -> dict:
     konc      = compute_blai5_koncorde(df, m=15)
     pvi_s     = calculate_pvi(close, volume)
     pvi_ema   = pvi_s.ewm(span=25, adjust=False).mean()
+    vol_ma    = volume.rolling(20).mean()
     macd_obj  = MACD(close=close, window_fast=12, window_slow=26, window_sign=9)
     rsi_s     = RSIIndicator(close=close, window=14).rsi()
-
-    # media de volumen 20 periodos
-    vol_ma = volume.rolling(20).mean()
 
     return dict(
         df=df, mcg25=mcg25, ema200=ema200,
@@ -367,6 +400,15 @@ def score_signals(sigs: list) -> tuple:
 
 # ══════════════════════════════════════════════════════════════════════════════
 # GRÁFICO MULTI-PANEL
+# Orden de paneles:
+#   0 · Velas + MCG25 + EMA200  (con eje X visible + padding inferior)
+#   1 · Volumen + MA20
+#   2 · RSI + divergencias       ← subido aquí para comparar con precio
+#   3 · ADX + AO
+#   4 · Koncorde
+#   5 · BBWP 13/252
+#   6 · PVI + EMA25
+#   7 · MACD
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
@@ -403,21 +445,33 @@ def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
     idx     = df_plot.index
     xs      = np.arange(len(idx))
 
-    # ── detectar divergencias para pintar en precio y RSI ─────────────────
+    # divergencias para pintar en precio y RSI
     div_alc_xs, div_baj_xs = [], []
     if div_df is not None:
         div_tipos_full = div_df["divergencia_tipo"].reindex(df.index).fillna("ninguna")
-        for xi, (ts, dt) in enumerate(zip(df.iloc[-n_max:].index, div_tipos_full.iloc[-n_max:])):
-            if dt == "alcista": div_alc_xs.append(xi)
+        for xi, dt in enumerate(div_tipos_full.iloc[-n_max:]):
+            if dt == "alcista":  div_alc_xs.append(xi)
             elif dt == "bajista": div_baj_xs.append(xi)
 
-    # 8 paneles: velas | volumen | ADX | Koncorde | BBWP | PVI | MACD | RSI
-    fig = plt.figure(figsize=(16, 22), facecolor=STYLE["bg"])
-    fig.subplots_adjust(left=0.07, right=0.97, top=0.95, bottom=0.03, hspace=0.06)
-    heights = [5, 1.2, 2, 2.2, 1.4, 1.6, 1.8, 1.6]
-    gs      = gridspec.GridSpec(8, 1, figure=fig, height_ratios=heights, hspace=0.06)
-    axes    = [fig.add_subplot(gs[i]) for i in range(8)]
-    for i in range(7):
+    # ── figura ────────────────────────────────────────────────────────────
+    # hspace=0.35 entre paneles da espacio suficiente para que el eje X
+    # del panel de precios no quede tapado por el panel de volumen
+    fig = plt.figure(figsize=(16, 24), facecolor=STYLE["bg"])
+    heights = [5, 1.2, 1.6, 2, 2.2, 1.4, 1.6, 1.8]
+    gs = gridspec.GridSpec(
+        8, 1,
+        figure=fig,
+        height_ratios=heights,
+        hspace=0.35,      # ← espacio entre paneles (era 0.06)
+    )
+    fig.subplots_adjust(left=0.07, right=0.97, top=0.95, bottom=0.04)
+
+    axes = [fig.add_subplot(gs[i]) for i in range(8)]
+
+    # ocultar eje X en todos excepto en panel 0 y panel 7 (último)
+    # Panel 0 SÍ muestra eje X → se ve la fecha bajo las velas
+    # Resto: oculto hasta el último
+    for i in range(1, 8):
         axes[i].tick_params(labelbottom=False)
 
     # título
@@ -436,7 +490,7 @@ def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
     fig.text(0.97, 0.965, f"{score_label}  ·  {bull_n}/{total_n}  ({pct}%)",
              fontsize=11, color=score_color, ha="right", va="bottom", style="italic")
 
-    # ── PANEL 0 — Velas + MCG25 + EMA200 + alertas divergencia ───────────
+    # ── PANEL 0 — Velas + MCG25 + EMA200 ──────────────────────────────────
     ax0 = axes[0]
     w   = 0.4
     for i, (_, row) in enumerate(df_plot.iterrows()):
@@ -452,9 +506,8 @@ def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
     ax0.plot(xs, sv(ema200, idx), color=STYLE["ema200"], lw=1.4, label="EMA 200", zorder=4)
 
     # alertas divergencia sobre precio
-    price_arr = sv(close, idx)
-    low_arr   = sv(low,   idx)
-    high_arr  = sv(high,  idx)
+    low_arr  = sv(low,  idx)
+    high_arr = sv(high, idx)
     for xi in div_alc_xs:
         if xi < len(low_arr) and not np.isnan(low_arr[xi]):
             ax0.annotate("▲ DIV ALC", xy=(xi, low_arr[xi]),
@@ -462,8 +515,8 @@ def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
                          fontsize=7, color=STYLE["bull"], ha="center",
                          fontweight="bold",
                          bbox=dict(boxstyle="round,pad=0.2",
-                                   facecolor="#0d3320", edgecolor=STYLE["bull"],
-                                   linewidth=0.8))
+                                   facecolor="#0d3320",
+                                   edgecolor=STYLE["bull"], linewidth=0.8))
     for xi in div_baj_xs:
         if xi < len(high_arr) and not np.isnan(high_arr[xi]):
             ax0.annotate("▼ DIV BAJ", xy=(xi, high_arr[xi]),
@@ -471,8 +524,8 @@ def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
                          fontsize=7, color=STYLE["bear"], ha="center",
                          fontweight="bold",
                          bbox=dict(boxstyle="round,pad=0.2",
-                                   facecolor="#3d0000", edgecolor=STYLE["bear"],
-                                   linewidth=0.8))
+                                   facecolor="#3d0000",
+                                   edgecolor=STYLE["bear"], linewidth=0.8))
 
     ax0.set_xlim(-1, len(idx))
     ax0.legend(loc="upper left", fontsize=8, frameon=False,
@@ -481,12 +534,22 @@ def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
     ax0.set_title("Velas  ·  McGinley 25  ·  EMA 200",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
 
+    # eje X visible en panel 0 con fechas claras
+    format_xaxis(ax0, idx)
+    ax0.tick_params(labelbottom=True, bottom=True)
+    # línea inferior destacada para separar visualmente del panel de volumen
+    ax0.spines["bottom"].set_linewidth(1.2)
+    ax0.spines["bottom"].set_edgecolor("#ffffff")
+
     # ── PANEL 1 — Volumen + MA20 ──────────────────────────────────────────
     ax1   = axes[1]
     vol_v = sv(volume, idx)
     vol_m = sv(vol_ma, idx)
-    vol_colors = [STYLE["bull"] if df_plot["Close"].iloc[i] >= df_plot["Open"].iloc[i]
-                  else STYLE["bear"] for i in range(len(df_plot))]
+    vol_colors = [
+        STYLE["bull"] if df_plot["Close"].iloc[i] >= df_plot["Open"].iloc[i]
+        else STYLE["bear"]
+        for i in range(len(df_plot))
+    ]
     ax1.bar(xs, vol_v, color=vol_colors, alpha=0.6, width=0.8, zorder=2)
     ax1.fill_between(xs, vol_m, alpha=0.25, color=STYLE["vol_ma"], zorder=1)
     ax1.plot(xs, vol_m, color=STYLE["vol_ma"], lw=1.2, label="Vol MA20", zorder=3)
@@ -496,58 +559,93 @@ def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
     ax1.set_title("Volumen  ·  MA 20",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
     ax1.yaxis.set_major_formatter(
-        plt.FuncFormatter(lambda x, _: f"{x/1e6:.0f}M" if x >= 1e6 else f"{x/1e3:.0f}K")
+        plt.FuncFormatter(
+            lambda x, _: f"{x/1e6:.0f}M" if x >= 1e6 else f"{x/1e3:.0f}K"
+        )
     )
 
-    # ── PANEL 2 — ADX + AO ────────────────────────────────────────────────
-    ax2  = axes[2]
-    ax2r = ax2.twinx()
+    # ── PANEL 2 — RSI + divergencias (junto a precio para comparar) ───────
+    ax2   = axes[2]
+    rsi_v = sv(rsi_s, idx)
+    ax2.fill_between(xs, rsi_v, 70, where=(rsi_v > 70), alpha=0.25, color=STYLE["bull"])
+    ax2.fill_between(xs, rsi_v, 30, where=(rsi_v < 30), alpha=0.25, color=STYLE["bear"])
+    ax2.plot(xs, rsi_v, color=STYLE["rsi"], lw=1.4)
+    for lvl, col, ls in [(70, STYLE["bear"], "--"),
+                         (50, STYLE["muted"], ":"),
+                         (30, STYLE["bull"],  "--")]:
+        ax2.axhline(lvl, color=col, lw=0.7, ls=ls)
+
+    # divergencias en RSI
+    for xi in div_alc_xs:
+        if xi < len(rsi_v) and not np.isnan(rsi_v[xi]):
+            ax2.annotate("▲", xy=(xi, rsi_v[xi]), fontsize=9,
+                         color=STYLE["bull"], ha="center", va="top",
+                         xytext=(0, -10), textcoords="offset points",
+                         fontweight="bold")
+            ax2.axvline(xi, color=STYLE["bull"], lw=0.6, ls=":", alpha=0.5)
+    for xi in div_baj_xs:
+        if xi < len(rsi_v) and not np.isnan(rsi_v[xi]):
+            ax2.annotate("▼", xy=(xi, rsi_v[xi]), fontsize=9,
+                         color=STYLE["bear"], ha="center", va="bottom",
+                         xytext=(0, 10), textcoords="offset points",
+                         fontweight="bold")
+            ax2.axvline(xi, color=STYLE["bear"], lw=0.6, ls=":", alpha=0.5)
+
+    ax2.set_ylim(0, 100)
+    ax2.yaxis.set_ticks([30, 50, 70])
+    panel_style(ax2, ylabel="RSI", yticks=3)
+    ax2.set_title("RSI 14  ·  ▲ div alcista  ▼ div bajista",
+                  fontsize=9, color=STYLE["muted"], loc="right", pad=4)
+
+    # ── PANEL 3 — ADX + AO ────────────────────────────────────────────────
+    ax3  = axes[3]
+    ax3r = ax3.twinx()
     ao_v = sv(ao_s, idx)
     ao_p = np.roll(ao_v, 1); ao_p[0] = ao_v[0]
     ao_c = [STYLE["ao_up"] if ao_v[i] >= ao_p[i] else STYLE["ao_dn"]
             for i in range(len(ao_v))]
-    ax2r.bar(xs, ao_v, color=ao_c, alpha=0.7, width=0.8, zorder=2)
-    ax2r.axhline(0, color=STYLE["zero"], lw=0.7)
-    ax2r.tick_params(labelsize=7, colors="#ffffff")
-    ax2r.set_ylabel("AO", fontsize=7, color="#ffffff")
-    ax2r.spines["right"].set_edgecolor(STYLE["border"])
-    ax2.plot(xs, sv(adx_s, idx), color=STYLE["adx"], lw=1.6, label="ADX",  zorder=3)
-    ax2.plot(xs, sv(pdi_s, idx), color=STYLE["pdi"], lw=0.9, ls="--", label="+DI", zorder=3)
-    ax2.plot(xs, sv(ndi_s, idx), color=STYLE["ndi"], lw=0.9, ls="--", label="-DI", zorder=3)
-    ax2.axhline(25, color=STYLE["muted"], lw=0.6, ls=":")
-    ax2.legend(loc="upper left", fontsize=7, frameon=False,
+    ax3r.bar(xs, ao_v, color=ao_c, alpha=0.7, width=0.8, zorder=2)
+    ax3r.axhline(0, color=STYLE["zero"], lw=0.7)
+    ax3r.tick_params(labelsize=7, colors="#ffffff")
+    ax3r.set_ylabel("AO", fontsize=7, color="#ffffff")
+    ax3r.spines["right"].set_edgecolor(STYLE["border"])
+    ax3.plot(xs, sv(adx_s, idx), color=STYLE["adx"], lw=1.6, label="ADX",  zorder=3)
+    ax3.plot(xs, sv(pdi_s, idx), color=STYLE["pdi"], lw=0.9, ls="--", label="+DI", zorder=3)
+    ax3.plot(xs, sv(ndi_s, idx), color=STYLE["ndi"], lw=0.9, ls="--", label="-DI", zorder=3)
+    ax3.axhline(25, color=STYLE["muted"], lw=0.6, ls=":")
+    ax3.legend(loc="upper left", fontsize=7, frameon=False,
                labelcolor=[STYLE["adx"], STYLE["pdi"], STYLE["ndi"]])
-    panel_style(ax2, ylabel="ADX")
-    ax2.set_title("ADX  ·  +DI / -DI  ·  Awesome Oscillator",
+    panel_style(ax3, ylabel="ADX")
+    ax3.set_title("ADX  ·  +DI / -DI  ·  Awesome Oscillator",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
 
-    # ── PANEL 3 — Koncorde (opacidad subida a 0.60) ───────────────────────
-    ax3 = axes[3]
+    # ── PANEL 4 — Koncorde ────────────────────────────────────────────────
+    ax4 = axes[4]
     if not konc.empty:
         for key, col in [("verde",  STYLE["verde"]),
                          ("marron", STYLE["marron"]),
                          ("azul",   STYLE["azul"])]:
             v = sv(konc[key], idx)
-            ax3.fill_between(xs, v, alpha=0.60, color=col,  # ← subido de 0.40 a 0.60
+            ax4.fill_between(xs, v, alpha=0.60, color=col,
                              label=key.capitalize(), zorder=2)
-            ax3.plot(xs, v, color=col, lw=1.0, zorder=3)
-        ax3.plot(xs, sv(konc["media"], idx), color=STYLE["media_k"],
+            ax4.plot(xs, v, color=col, lw=1.0, zorder=3)
+        ax4.plot(xs, sv(konc["media"], idx), color=STYLE["media_k"],
                  lw=1.6, label="Media", zorder=4)
-        ax3.legend(loc="upper left", fontsize=7, frameon=False,
+        ax4.legend(loc="upper left", fontsize=7, frameon=False,
                    labelcolor=[STYLE["verde"], STYLE["marron"],
                                STYLE["azul"], STYLE["media_k"]])
-    ax3.axhline(0, color=STYLE["zero"], lw=0.7)
-    panel_style(ax3, ylabel="Koncorde")
-    ax3.set_title("Blai5 Koncorde  ·  Verde / Marrón / Azul / Media",
+    ax4.axhline(0, color=STYLE["zero"], lw=0.7)
+    panel_style(ax4, ylabel="Koncorde")
+    ax4.set_title("Blai5 Koncorde  ·  Verde / Marrón / Azul / Media",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
 
-    # ── PANEL 4 — BBWP 13/252 ─────────────────────────────────────────────
-    ax4    = axes[4]
+    # ── PANEL 5 — BBWP 13/252 ─────────────────────────────────────────────
+    ax5    = axes[5]
     bbwp_v = sv(bbwp_s, idx)
-    ax4.fill_between(xs, bbwp_v, 20,
+    ax5.fill_between(xs, bbwp_v, 20,
                      where=(~np.isnan(bbwp_v)) & (bbwp_v < 20),
                      alpha=0.25, color=STYLE["azul"], zorder=1)
-    ax4.fill_between(xs, bbwp_v, 80,
+    ax5.fill_between(xs, bbwp_v, 80,
                      where=(~np.isnan(bbwp_v)) & (bbwp_v > 80),
                      alpha=0.25, color=STYLE["bear"], zorder=1)
     for i in range(1, len(xs)):
@@ -555,35 +653,35 @@ def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
         mid = (bbwp_v[i] + bbwp_v[i - 1]) / 2
         lc  = (STYLE["azul"] if mid < 20
                else (STYLE["bear"] if mid > 80 else STYLE["muted"]))
-        ax4.plot([xs[i - 1], xs[i]], [bbwp_v[i - 1], bbwp_v[i]],
+        ax5.plot([xs[i - 1], xs[i]], [bbwp_v[i - 1], bbwp_v[i]],
                  color=lc, lw=1.5, zorder=3)
-    ax4.axhline(80, color=STYLE["bear"],  lw=0.7, ls="--", alpha=0.6)
-    ax4.axhline(20, color=STYLE["azul"],  lw=0.7, ls="--", alpha=0.6)
-    ax4.axhline(50, color=STYLE["muted"], lw=0.5, ls=":",  alpha=0.4)
-    ax4.set_ylim(-2, 102)
-    ax4.yaxis.set_ticks([0, 20, 50, 80, 100])
-    panel_style(ax4, ylabel="BBWP")
-    ax4.set_title("BBWP 13/252  ·  🟢 compresión < 20  ·  🔴 expansión > 80",
+    ax5.axhline(80, color=STYLE["bear"],  lw=0.7, ls="--", alpha=0.6)
+    ax5.axhline(20, color=STYLE["azul"],  lw=0.7, ls="--", alpha=0.6)
+    ax5.axhline(50, color=STYLE["muted"], lw=0.5, ls=":",  alpha=0.4)
+    ax5.set_ylim(-2, 102)
+    ax5.yaxis.set_ticks([0, 20, 50, 80, 100])
+    panel_style(ax5, ylabel="BBWP")
+    ax5.set_title("BBWP 13/252  ·  🟢 compresión < 20  ·  🔴 expansión > 80",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
 
-    # ── PANEL 5 — PVI + EMA25 ─────────────────────────────────────────────
-    ax5   = axes[5]
+    # ── PANEL 6 — PVI + EMA25 ─────────────────────────────────────────────
+    ax6   = axes[6]
     pvi_v = sv(pvi_s,   idx)
     pvi_e = sv(pvi_ema, idx)
-    ax5.fill_between(xs, pvi_v, pvi_e, where=(pvi_v >= pvi_e),
+    ax6.fill_between(xs, pvi_v, pvi_e, where=(pvi_v >= pvi_e),
                      alpha=0.18, color=STYLE["bull"])
-    ax5.fill_between(xs, pvi_v, pvi_e, where=(pvi_v <  pvi_e),
+    ax6.fill_between(xs, pvi_v, pvi_e, where=(pvi_v <  pvi_e),
                      alpha=0.18, color=STYLE["bear"])
-    ax5.plot(xs, pvi_v, color=STYLE["pvi"],     lw=1.4, label="PVI")
-    ax5.plot(xs, pvi_e, color=STYLE["pvi_ema"], lw=1.4, ls="--", label="EMA 25")
-    ax5.legend(loc="upper left", fontsize=7, frameon=False,
+    ax6.plot(xs, pvi_v, color=STYLE["pvi"],     lw=1.4, label="PVI")
+    ax6.plot(xs, pvi_e, color=STYLE["pvi_ema"], lw=1.4, ls="--", label="EMA 25")
+    ax6.legend(loc="upper left", fontsize=7, frameon=False,
                labelcolor=[STYLE["pvi"], STYLE["pvi_ema"]])
-    panel_style(ax5, ylabel="PVI")
-    ax5.set_title("PVI  ·  EMA 25",
+    panel_style(ax6, ylabel="PVI")
+    ax6.set_title("PVI  ·  EMA 25",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
 
-    # ── PANEL 6 — MACD ────────────────────────────────────────────────────
-    ax6    = axes[6]
+    # ── PANEL 7 — MACD (último, con eje X) ────────────────────────────────
+    ax7    = axes[7]
     hist_v = sv(macd_hist, idx)
     hist_p = np.roll(hist_v, 1); hist_p[0] = hist_v[0]
     bar_col = []
@@ -591,68 +689,35 @@ def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
         v, p_v = hist_v[i], hist_p[i]
         if np.isnan(v): bar_col.append(STYLE["muted"]); continue
         bar_col.append(
-            STYLE["bull"] if (v >= 0 and v >= p_v) else
+            STYLE["bull"]      if (v >= 0 and v >= p_v) else
             STYLE["bull_fade"] if v >= 0 else
-            STYLE["bear"] if v <= p_v else STYLE["bear_fade"]
+            STYLE["bear"]      if v <= p_v else STYLE["bear_fade"]
         )
-    ax6.bar(xs, hist_v, color=bar_col, width=0.8, alpha=0.9, zorder=2)
-    ax6.plot(xs, sv(macd_line, idx), color=STYLE["macd_line"],
+    ax7.bar(xs, hist_v, color=bar_col, width=0.8, alpha=0.9, zorder=2)
+    ax7.plot(xs, sv(macd_line, idx), color=STYLE["macd_line"],
              lw=1.3, label="MACD",  zorder=3)
-    ax6.plot(xs, sv(macd_sig,  idx), color=STYLE["macd_sig"],
+    ax7.plot(xs, sv(macd_sig,  idx), color=STYLE["macd_sig"],
              lw=1.3, ls="--", label="Señal", zorder=3)
-    ax6.axhline(0, color=STYLE["zero"], lw=0.7)
-    ax6.legend(loc="upper left", fontsize=7, frameon=False,
+    ax7.axhline(0, color=STYLE["zero"], lw=0.7)
+    ax7.legend(loc="upper left", fontsize=7, frameon=False,
                labelcolor=[STYLE["macd_line"], STYLE["macd_sig"]])
-    panel_style(ax6, ylabel="MACD")
-    ax6.set_title("MACD  12 / 26 / 9",
-                  fontsize=9, color=STYLE["muted"], loc="right", pad=4)
-
-    # ── PANEL 7 — RSI + divergencias dibujadas ────────────────────────────
-    ax7   = axes[7]
-    rsi_v = sv(rsi_s, idx)
-    ax7.fill_between(xs, rsi_v, 70, where=(rsi_v > 70), alpha=0.25, color=STYLE["bull"])
-    ax7.fill_between(xs, rsi_v, 30, where=(rsi_v < 30), alpha=0.25, color=STYLE["bear"])
-    ax7.plot(xs, rsi_v, color=STYLE["rsi"], lw=1.4)
-    for lvl, col, ls in [(70, STYLE["bear"], "--"),
-                         (50, STYLE["muted"], ":"),
-                         (30, STYLE["bull"],  "--")]:
-        ax7.axhline(lvl, color=col, lw=0.7, ls=ls)
-
-    # divergencias en RSI: triángulos y línea horizontal de referencia
-    for xi in div_alc_xs:
-        if xi < len(rsi_v) and not np.isnan(rsi_v[xi]):
-            ax7.annotate("▲", xy=(xi, rsi_v[xi]), fontsize=9,
-                         color=STYLE["bull"], ha="center", va="top",
-                         xytext=(0, -10), textcoords="offset points",
-                         fontweight="bold")
-            ax7.axvline(xi, color=STYLE["bull"], lw=0.6, ls=":", alpha=0.5)
-    for xi in div_baj_xs:
-        if xi < len(rsi_v) and not np.isnan(rsi_v[xi]):
-            ax7.annotate("▼", xy=(xi, rsi_v[xi]), fontsize=9,
-                         color=STYLE["bear"], ha="center", va="bottom",
-                         xytext=(0, 10), textcoords="offset points",
-                         fontweight="bold")
-            ax7.axvline(xi, color=STYLE["bear"], lw=0.6, ls=":", alpha=0.5)
-
-    ax7.set_ylim(0, 100)
-    ax7.yaxis.set_ticks([30, 50, 70])
-    panel_style(ax7, ylabel="RSI", yticks=3)
+    panel_style(ax7, ylabel="MACD")
     format_xaxis(ax7, idx)
     ax7.tick_params(labelbottom=True)
-    ax7.set_title("RSI 14  ·  ▲ div alcista  ▼ div bajista",
+    ax7.set_title("MACD  12 / 26 / 9",
                   fontsize=9, color=STYLE["muted"], loc="right", pad=4)
 
     for ax in axes:
         ax.set_xlim(-1, len(idx))
 
-    # ── barra de señales inferior ─────────────────────────────────────────
+    # barra de señales inferior
     x0  = 0.07
     gap = (0.97 - x0) / len(sigs)
     for i, s in enumerate(sigs):
         col = (STYLE["bull"] if s["state"] == "bull" else
                STYLE["bear"] if s["state"] == "bear" else STYLE["muted"])
         fig.text(
-            x0 + i * gap + (gap - 0.003) / 2, 0.018,
+            x0 + i * gap + (gap - 0.003) / 2, 0.012,
             s["label"], fontsize=7.5, color=col,
             ha="center", va="center",
             bbox=dict(boxstyle="round,pad=0.3",
@@ -709,47 +774,40 @@ def style_df(df: pd.DataFrame):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HISTÓRICO DE SEÑALES (session_state)
+# HISTÓRICO DE SEÑALES
 # ══════════════════════════════════════════════════════════════════════════════
 
 def guardar_historico(df_nuevo: pd.DataFrame):
-    """Guarda el resultado actual como histórico en session_state."""
     now = datetime.now(timezone.utc).strftime("%H:%M UTC")
     if "hist_prev" not in st.session_state:
         st.session_state["hist_prev"]      = None
         st.session_state["hist_prev_hora"] = None
-    st.session_state["hist_prev"]      = st.session_state.get("hist_actual", None)
-    st.session_state["hist_prev_hora"] = st.session_state.get("hist_actual_hora", None)
-    st.session_state["hist_actual"]    = df_nuevo.copy()
+    st.session_state["hist_prev"]        = st.session_state.get("hist_actual", None)
+    st.session_state["hist_prev_hora"]   = st.session_state.get("hist_actual_hora", None)
+    st.session_state["hist_actual"]      = df_nuevo.copy()
     st.session_state["hist_actual_hora"] = now
 
 
 def mostrar_cambios():
-    """Muestra diferencias entre el scan actual y el anterior."""
-    prev = st.session_state.get("hist_prev", None)
-    curr = st.session_state.get("hist_actual", None)
+    prev      = st.session_state.get("hist_prev", None)
+    curr      = st.session_state.get("hist_actual", None)
     hora_prev = st.session_state.get("hist_prev_hora", "—")
     hora_curr = st.session_state.get("hist_actual_hora", "—")
-
     if prev is None or curr is None:
         st.info("Necesitas al menos dos ejecuciones para ver cambios.")
         return
-
-    merged = curr[["Ticker", "Señal"]].merge(
-        prev[["Ticker", "Señal"]].rename(columns={"Señal": "Señal_Ant"}),
+    merged  = curr[["Ticker","Señal"]].merge(
+        prev[["Ticker","Señal"]].rename(columns={"Señal": "Señal_Ant"}),
         on="Ticker", how="left",
     )
     cambios = merged[merged["Señal"] != merged["Señal_Ant"]].dropna()
-
     st.caption(f"Comparando: **{hora_curr}** (actual) vs **{hora_prev}** (anterior)")
-
     if cambios.empty:
         st.success("✅ Sin cambios de señal entre los dos últimos análisis.")
         return
-
     st.markdown(f"**{len(cambios)} tickers cambiaron de señal:**")
     for _, row in cambios.iterrows():
-        col_ant = SEÑAL_COLOR.get(row["Señal_Ant"], "#888")
+            col_ant = SEÑAL_COLOR.get(row["Señal_Ant"], "#888")
         col_new = SEÑAL_COLOR.get(row["Señal"],     "#888")
         st.markdown(
             f"**{row['Ticker']}** &nbsp;&nbsp;"
@@ -792,13 +850,13 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════════════
 
 tab1, tab2 = st.tabs([
-    "📋  Semáforo  —  Sovereign Dashboard v3",
-    "📈  Gráficos multi-panel",
+    "📊  DASHBOARD SEÑALES",
+    "📈  GRÁFICOS ESTRATEGIA",
 ])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 1 — Semáforo
+# TAB 1 — Dashboard Señales
 # ─────────────────────────────────────────────────────────────────────────────
 
 with tab1:
@@ -830,14 +888,12 @@ with tab1:
         pb.progress(100)
         stx.empty()
 
-    # timestamp de actualización
     now_str = datetime.now(timezone.utc).strftime("%d/%m/%Y  %H:%M UTC")
     st.caption(f"🕐 Última actualización: **{now_str}**")
 
     if df_result.empty:
         st.warning("No se obtuvieron resultados. Revisa la conexión o los tickers.")
     else:
-        # guardar histórico para comparación
         guardar_historico(df_result)
 
         col_meta2.metric("Procesados", len(df_result))
@@ -867,7 +923,6 @@ with tab1:
             height=min(600, 38 + 35 * len(df_show)),
         )
 
-        # razones con scroll horizontal y fuente pequeña
         with st.expander("📝 Ver Razones detalladas"):
             df_raz = df_show[cols_razon].copy()
             _s  = df_raz.style
@@ -877,13 +932,12 @@ with tab1:
                 .set_properties(**{
                     "background-color": "#13161e",
                     "color":            "#ffffff",
-                    "font-size":        "0.72rem",   # ← más pequeño
+                    "font-size":        "0.72rem",
                     "white-space":      "nowrap",
                 })
             )
             st.dataframe(styled_raz, use_container_width=True, height=400)
 
-        # histórico de señales
         with st.expander("📊 Cambios vs análisis anterior"):
             mostrar_cambios()
 
@@ -905,17 +959,16 @@ with tab1:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 2 — Gráficos
+# TAB 2 — Gráficos Estrategia
 # ─────────────────────────────────────────────────────────────────────────────
 
 with tab2:
-    st.markdown("## 📈 Gráficos multi-panel")
+    st.markdown("## 📈 Gráficos Estrategia")
 
-    # ── controles en la pestaña ───────────────────────────────────────────
+    # ── controles visibles en la pestaña ─────────────────────────────────
     col_a, col_b, col_c, col_d = st.columns([5, 1, 1, 1])
 
     with col_a:
-        # persistir selección en session_state
         if "chart_tickers_sel" not in st.session_state:
             st.session_state["chart_tickers_sel"] = ["NVDA"]
 
@@ -925,14 +978,13 @@ with tab2:
             default=st.session_state["chart_tickers_sel"],
             key="chart_tickers",
         )
-        # guardar selección para próxima sesión
         st.session_state["chart_tickers_sel"] = chart_tickers
 
     with col_b:
         chart_interval = st.selectbox(
             "Intervalo",
             options=list(INTERVAL_CONFIG.keys()),
-            index=0,           # 1D por defecto
+            index=0,
             key="chart_interval",
         )
 
@@ -948,16 +1000,15 @@ with tab2:
         st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
         force_refresh_tab2 = st.button("🔄 Recalcular", key="refresh2")
 
-    # aviso intervalos intraday
     if chart_interval in ("1h", "4h"):
         st.warning(
-            f"⚠️ Intervalo **{chart_interval}**: EMA200 y BBWP tienen menos barras históricas "
-            "— los indicadores de largo plazo son orientativos en intraday."
+            f"⚠️ Intervalo **{chart_interval}**: EMA200 y BBWP tienen menos barras "
+            "históricas — indicadores de largo plazo orientativos en intraday."
         )
 
     st.caption(
-        "8 paneles: Velas+MCG25+EMA200 · Volumen · ADX+AO · Koncorde · "
-        "BBWP 13/252 · PVI+EMA25 · MACD 12/26/9 · RSI14+divergencias"
+        "8 paneles: Velas+MCG25+EMA200 · Volumen · RSI+divergencias · "
+        "ADX+AO · Koncorde · BBWP 13/252 · PVI+EMA25 · MACD 12/26/9"
     )
     st.markdown("---")
 
@@ -970,10 +1021,12 @@ with tab2:
 
     for chart_ticker in chart_tickers:
 
-        st.markdown(f"### 📊 {chart_ticker}  "
-                    f"<small style='color:#aaaaaa'>· {INTERVAL_CONFIG[chart_interval]['label']}"
-                    f" · {zoom_candles} velas</small>",
-                    unsafe_allow_html=True)
+        st.markdown(
+            f"### 📊 {chart_ticker}  "
+            f"<small style='color:#aaaaaa'>· {INTERVAL_CONFIG[chart_interval]['label']}"
+            f" · {zoom_candles} velas</small>",
+            unsafe_allow_html=True,
+        )
 
         with st.spinner(f"Calculando {chart_ticker}…"):
             chart_data = cached_chart_data(chart_ticker, interval_key=chart_interval)
@@ -982,7 +1035,6 @@ with tab2:
             st.error(f"Sin datos para **{chart_ticker}**. Verifica el ticker.")
             continue
 
-        # timestamp
         now_str2 = datetime.now(timezone.utc).strftime("%d/%m/%Y  %H:%M UTC")
         st.caption(f"🕐 Última actualización: **{now_str2}**")
 
@@ -1038,7 +1090,8 @@ with tab2:
                 unsafe_allow_html=True,
             )
 
-        score_col = "green" if pct_s >= 60 else ("red" if pct_s < 40 else "orange")
+        score_col = ("green" if pct_s >= 60 else
+                     "red"   if pct_s < 40  else "orange")
         st.markdown(
             f"<h4 style='color:{score_col};text-align:center;'>"
             f"{label_s}  ·  {bull_n}/{total_n}  ({pct_s}%)</h4>",
@@ -1059,4 +1112,5 @@ with tab2:
             mime="image/png",
             key=f"dl_{chart_ticker}_{chart_interval}",
         )
-        st.markdown("---")
+        st.markdown("---")    
+        
