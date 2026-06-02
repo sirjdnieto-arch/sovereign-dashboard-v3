@@ -788,6 +788,7 @@ def guardar_historico(df_nuevo: pd.DataFrame):
     st.session_state["hist_actual_hora"] = now
 
 
+# CORRECTO — toda la función completa
 def mostrar_cambios():
     prev      = st.session_state.get("hist_prev", None)
     curr      = st.session_state.get("hist_actual", None)
@@ -807,7 +808,7 @@ def mostrar_cambios():
         return
     st.markdown(f"**{len(cambios)} tickers cambiaron de señal:**")
     for _, row in cambios.iterrows():
-            col_ant = SEÑAL_COLOR.get(row["Señal_Ant"], "#888")
+        col_ant = SEÑAL_COLOR.get(row["Señal_Ant"], "#888")
         col_new = SEÑAL_COLOR.get(row["Señal"],     "#888")
         st.markdown(
             f"**{row['Ticker']}** &nbsp;&nbsp;"
@@ -816,7 +817,6 @@ def mostrar_cambios():
             f"<span style='color:{col_new}'>{row['Señal']}</span>",
             unsafe_allow_html=True,
         )
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR  —  solo controles de Tab 1
