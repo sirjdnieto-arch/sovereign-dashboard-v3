@@ -181,7 +181,7 @@ ALL_TICKERS = [
     "PG","XOM","UNH","JPM","HD","LLY","MA","CVX","ABBV","KO","PEP",
     "COST","BAC","CRM","NFLX","ABT","MCD","LMT","EL","NEE","CAT","MRK",
     "TPL","ASML","ADBE","AVGO","CSCO","CMCSA","AMD","TXN","QCOM","AMAT","LITE","LRCX","COHR","NEE",
-    "NEM", "ULTA", "IT","FOXA","LUV","VLO", "ADP", 
+    "NEM", "ULTA", "IT","FOXA","LUV","VLO", "ADP", "FN", "POET", 
     "INTU","VRTX","ZS","PLTR","CSU.TO","MU","LVMUY","SAP","OR.PA","TTE","SATS","ON",
     "MC.PA","SIE.DE","ENGI.PA","AIR.PA","ALV.DE","EL.PA","AI.PA","BNP.PA",
     "SAN.PA","KER.PA","SU.PA","NESN.SW","LIN.DE","VOW3.DE","BMW.DE","ADS.DE",
