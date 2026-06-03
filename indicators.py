@@ -729,3 +729,487 @@ def get_sovereign_dashboard(tickers: list, progress_cb=None) -> pd.DataFrame:
                         .drop(columns="_sort")
                         .reset_index(drop=True))
     return result
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SEÑALES V2 — nuevo sistema de scoring con frescura
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _velas_desde_cruce(serie_bool: pd.Series) -> int:
+    """
+    Devuelve cuántas velas han pasado desde el ÚLTIMO cruce True.
+    Si nunca cruzó o no está activo ahora → 999.
+    """
+    vals = serie_bool.fillna(False).values
+    n    = len(vals)
+    if n == 0 or not vals[-1]:
+        return 999
+    # buscar hacia atrás el primer False antes del bloque True final
+    for i in range(n - 1, -1, -1):
+        if not vals[i]:
+            return (n - 1) - i
+    return n  # toda la serie es True
+
+
+def calcular_señales_v2(
+    df:        pd.DataFrame,
+    kdf:       pd.DataFrame,
+    bitman_df: pd.DataFrame,
+    bbwp_s:    pd.Series,
+    macd_line: pd.Series,
+    macd_sig:  pd.Series,
+    pvi_s:     pd.Series,
+    pvi_ema:   pd.Series,
+    rsi_s:     pd.Series,
+) -> dict:
+    """
+    Nuevo sistema de señales con distinción estado / frescura.
+
+    Señales POTENTES (máx 6, con frescura ≤3 velas):
+      S1  MACD cruce alcista
+      S2  AO cambia rojo→verde
+      S3  PVI cruza EMA25 hacia arriba
+      S4  Azul Koncorde cruza cero hacia arriba
+      S5  Media Koncorde entra en área
+      S6  Bitman cambia a IMPULSO ALCISTA
+
+    Señales INFORMATIVAS (máx 2, sin frescura):
+      S7  BBWP pendiente positiva y > 20
+      S8  Volumen confirmatorio > 1.3x MA20 con cierre positivo
+
+    Señales INFORMATIVAS EXTRA (texto, sin puntuación):
+      SI1 Precio en entorno MCG25 ±1.2%
+      SI2 Precio en entorno EMA200 ±1.5%
+      SI3 Azul+ y Verde- (Atención Konkorde)
+      SI4 Azul subiendo (slope positivo)
+      SI5 Divergencia RSI alcista ≤15v
+
+    Retorna dict con todo el detalle para mostrar en dashboard.
+    """
+    UMBRAL_FRESCURA = 3   # velas
+    resultado = {
+        "señales": {},      # detalle de cada señal
+        "informativas": [], # textos informativos
+        "n_activas": 0,
+        "n_frescas": 0,
+        "etiqueta": "⛔ SIN SETUP",
+        "razones": "",
+    }
+
+    close  = df["Close"]
+    high   = df["High"]
+    low    = df["Low"]
+    volume = df["Volume"]
+    n      = len(df)
+
+    if n < 60:
+        return resultado
+
+    # ── S1: MACD cruce alcista ────────────────────────────────────────────
+    diff         = macd_line - macd_sig
+    macd_activo  = diff.iloc[-1] > 0
+    macd_cruce   = (diff > 0) & (diff.shift(1) <= 0)
+    macd_frescura = _velas_desde_cruce(macd_cruce) if macd_activo else 999
+    macd_fresca  = macd_activo and macd_frescura <= UMBRAL_FRESCURA
+    resultado["señales"]["S1_MACD"] = {
+        "nombre":  "MACD cruce ↑",
+        "activa":  macd_activo,
+        "fresca":  macd_fresca,
+        "velas":   macd_frescura if macd_activo else None,
+    }
+
+    # ── S2: AO cambia rojo → verde ────────────────────────────────────────
+    ao_s        = awesome_osc(high, low)
+    ao_verde    = ao_s > ao_s.shift(1)
+    ao_activo   = bool(ao_verde.iloc[-1])
+    ao_cruce    = ao_verde & ~ao_verde.shift(1).fillna(False)
+    ao_frescura = _velas_desde_cruce(ao_cruce) if ao_activo else 999
+    ao_fresca   = ao_activo and ao_frescura <= UMBRAL_FRESCURA
+    resultado["señales"]["S2_AO"] = {
+        "nombre": "AO rojo→verde",
+        "activa": ao_activo,
+        "fresca": ao_fresca,
+        "velas":  ao_frescura if ao_activo else None,
+    }
+
+    # ── S3: PVI cruza EMA25 hacia arriba ──────────────────────────────────
+    pvi_activo   = bool(pvi_s.iloc[-1] > pvi_ema.iloc[-1])
+    pvi_cruce    = (pvi_s > pvi_ema) & (pvi_s.shift(1) <= pvi_ema.shift(1))
+    pvi_frescura = _velas_desde_cruce(pvi_cruce) if pvi_activo else 999
+    pvi_fresca   = pvi_activo and pvi_frescura <= UMBRAL_FRESCURA
+    resultado["señales"]["S3_PVI"] = {
+        "nombre": "PVI cruza EMA25 ↑",
+        "activa": pvi_activo,
+        "fresca": pvi_fresca,
+        "velas":  pvi_frescura if pvi_activo else None,
+    }
+
+    # ── S4: Azul Koncorde cruza cero hacia arriba ─────────────────────────
+    if not kdf.empty and "azul" in kdf.columns:
+        azul          = kdf["azul"]
+        azul_activo   = bool(azul.iloc[-1] > 0)
+        azul_cruce    = (azul > 0) & (azul.shift(1) <= 0)
+        azul_frescura = _velas_desde_cruce(azul_cruce) if azul_activo else 999
+        azul_fresca   = azul_activo and azul_frescura <= UMBRAL_FRESCURA
+    else:
+        azul_activo = azul_fresca = False
+        azul_frescura = 999
+    resultado["señales"]["S4_AZUL"] = {
+        "nombre": "Azul K cruza 0 ↑",
+        "activa": azul_activo,
+        "fresca": azul_fresca,
+        "velas":  azul_frescura if azul_activo else None,
+    }
+
+    # ── S5: Media Koncorde entra en área ──────────────────────────────────
+    if not kdf.empty and all(c in kdf.columns for c in ["verde","marron","azul","media"]):
+        area_max    = kdf[["verde","marron","azul"]].max(axis=1)
+        area_min    = kdf[["verde","marron","azul"]].min(axis=1)
+        media       = kdf["media"]
+        en_area     = (media >= area_min) & (media <= area_max) & media.notna()
+        media_activo  = bool(en_area.iloc[-1])
+        media_cruce   = en_area & ~en_area.shift(1).fillna(False)
+        media_frescura = _velas_desde_cruce(media_cruce) if media_activo else 999
+        media_fresca  = media_activo and media_frescura <= UMBRAL_FRESCURA
+    else:
+        media_activo = media_fresca = False
+        media_frescura = 999
+    resultado["señales"]["S5_MEDIA"] = {
+        "nombre": "Media K en área",
+        "activa": media_activo,
+        "fresca": media_fresca,
+        "velas":  media_frescura if media_activo else None,
+    }
+
+    # ── S6: Bitman cambia a IMPULSO ALCISTA ───────────────────────────────
+    if bitman_df is not None and not bitman_df.empty and "Bitman_Etiqueta" in bitman_df.columns:
+        etiq           = bitman_df["Bitman_Etiqueta"]
+        bitman_activo  = bool(etiq.iloc[-1] == "IMPULSO ALCISTA")
+        bitman_cruce   = (etiq == "IMPULSO ALCISTA") & (etiq.shift(1) != "IMPULSO ALCISTA")
+        bitman_frescura = _velas_desde_cruce(bitman_cruce) if bitman_activo else 999
+        bitman_fresca  = bitman_activo and bitman_frescura <= UMBRAL_FRESCURA
+    else:
+        bitman_activo = bitman_fresca = False
+        bitman_frescura = 999
+    resultado["señales"]["S6_BITMAN"] = {
+        "nombre": "Bitman impulso ↑",
+        "activa": bitman_activo,
+        "fresca": bitman_fresca,
+        "velas":  bitman_frescura if bitman_activo else None,
+    }
+
+    # ── S7: BBWP pendiente positiva y > 20 ───────────────────────────────
+    if len(bbwp_s.dropna()) >= 5:
+        bbwp_last   = bbwp_s.dropna().iloc[-1]
+        bbwp_prev   = bbwp_s.dropna().iloc[-4]
+        s7_activa   = bool(bbwp_last > 20 and bbwp_last > bbwp_prev)
+    else:
+        s7_activa = False
+    resultado["señales"]["S7_BBWP"] = {
+        "nombre": "BBWP pendiente ↑",
+        "activa": s7_activa,
+        "fresca": False,   # informativa, sin frescura
+        "velas":  None,
+    }
+
+    # ── S8: Volumen confirmatorio ─────────────────────────────────────────
+    vol_ma   = volume.rolling(20).mean()
+    vol_conf = (volume > vol_ma * 1.3) & (close > close.shift(1))
+    # al menos 1 de las últimas 3 velas cumple
+    s8_activa = bool(vol_conf.iloc[-3:].any())
+    resultado["señales"]["S8_VOL"] = {
+        "nombre": "Volumen confirm.",
+        "activa": s8_activa,
+        "fresca": False,
+        "velas":  None,
+    }
+
+    # ── Conteo ────────────────────────────────────────────────────────────
+    n_activas = sum(1 for s in resultado["señales"].values() if s["activa"])
+    n_frescas = sum(
+        1 for k, s in resultado["señales"].items()
+        if s["fresca"] and k not in ("S7_BBWP", "S8_VOL")
+    )
+    resultado["n_activas"] = n_activas
+    resultado["n_frescas"] = n_frescas
+
+    # ── Señales informativas extra ────────────────────────────────────────
+    informativas = []
+
+    # SI1: precio en entorno MCG25
+    mcg25_val = mcginley_dynamic(close, 25).iloc[-1]
+    precio    = close.iloc[-1]
+    if abs(precio / mcg25_val - 1) < 0.012:
+        informativas.append("🟡 Precio en soporte MCG25")
+
+    # SI2: precio en entorno EMA200
+    ema200_val = EMAIndicator(close=close, window=200).ema_indicator().iloc[-1]
+    if abs(precio / ema200_val - 1) < 0.015:
+        informativas.append("🟡 Precio en soporte EMA200")
+
+    # SI3: Atención Koncorde (azul+ y verde-)
+    if not kdf.empty and "azul" in kdf.columns and "verde" in kdf.columns:
+        if kdf["azul"].iloc[-1] > 0 and kdf["verde"].iloc[-1] < 0:
+            informativas.append("⚠️ Atención Konkorde (azul+ verde-)")
+
+    # SI4: Azul subiendo
+    if not kdf.empty and "azul" in kdf.columns and len(kdf["azul"].dropna()) >= 4:
+        if kdf["azul"].iloc[-1] > kdf["azul"].iloc[-4]:
+            informativas.append("↑ Azul K acelerando")
+
+    # SI5: Divergencia RSI alcista ≤15v
+    rsi_div = detectar_divergencia_simple(df)
+    hits    = rsi_div[rsi_div["divergencia_tipo"] == "alcista"]
+    if not hits.empty:
+        div_idx   = rsi_div.index.get_loc(hits.index[-1])
+        div_velas = len(rsi_div) - 1 - div_idx
+        if div_velas <= 15:
+            informativas.append(f"🟢 Div alcista RSI ({div_velas}v)")
+
+    resultado["informativas"] = informativas
+
+    # ── Etiqueta final ────────────────────────────────────────────────────
+    # Atención Konkorde es independiente
+    if not kdf.empty and "azul" in kdf.columns and "verde" in kdf.columns:
+        if kdf["azul"].iloc[-1] > 0 and kdf["verde"].iloc[-1] < 0:
+            resultado["etiqueta"] = "⚠️ ATENCIÓN KONKORDE"
+            # no return — seguimos calculando el resto para mostrar detalle
+
+    if n_activas >= 6 and n_frescas >= 4:
+        etiqueta = "🚀 POSITIVO CON MOMENTUM"
+    elif n_activas >= 5 and n_frescas >= 2:
+        etiqueta = "✅ POSITIVO"
+    elif n_activas >= 5 and n_frescas < 2:
+        etiqueta = "⏰ POSITIVO MADURO"
+    elif n_activas >= 3 and n_frescas >= 2:
+        etiqueta = "👀 EN DESARROLLO"
+    elif n_activas >= 3:
+        etiqueta = "👀 VIGILAR"
+    else:
+        etiqueta = "⛔ SIN SETUP"
+
+    # Atención Konkorde tiene prioridad solo si no hay señal mejor
+    if resultado["etiqueta"] == "⚠️ ATENCIÓN KONKORDE" and n_activas < 3:
+        pass  # mantiene ATENCIÓN KONKORDE
+    else:
+        resultado["etiqueta"] = etiqueta
+
+    # ── Texto razones ─────────────────────────────────────────────────────
+    razones_parts = []
+    for s in resultado["señales"].values():
+        if s["activa"]:
+            frescura_txt = f" 🔥{s['velas']}v" if s["fresca"] else ""
+            razones_parts.append(f"✅ {s['nombre']}{frescura_txt}")
+        else:
+            razones_parts.append(f"❌ {s['nombre']}")
+
+    if informativas:
+        razones_parts.extend(informativas)
+
+    resultado["razones"] = "  |  ".join(razones_parts)
+
+    return resultado
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SEMÁFORO DE SALIDA — para pestaña Mi Cartera
+# ══════════════════════════════════════════════════════════════════════════════
+
+def semaforo_salida(
+    df:        pd.DataFrame,
+    kdf:       pd.DataFrame,
+    bitman_df: pd.DataFrame,
+    macd_line: pd.Series,
+    macd_sig:  pd.Series,
+    pvi_s:     pd.Series,
+    pvi_ema:   pd.Series,
+) -> dict:
+    """
+    4 señales de salida — todas son CRUCES/CAMBIOS bajistas:
+      SE1  AO cambia verde → rojo
+      SE2  MACD cruza señal hacia abajo
+      SE3  PVI cruza EMA25 hacia abajo
+      SE4  Bitman cambia a RETROCESO o INDEFINICIÓN
+
+    Etiquetas:
+      0 señales  → 🟢 MANTENER
+      1 señal    → 🟡 VIGILAR POSICIÓN
+      2 señales  → 🟠 CONSIDERAR REDUCIR
+      3+ señales → 🔴 SALIDA
+    """
+    resultado = {
+        "señales": {},
+        "n_salida": 0,
+        "etiqueta": "🟢 MANTENER",
+        "razones":  "",
+    }
+
+    high = df["High"]
+    low  = df["Low"]
+    n    = len(df)
+    if n < 10:
+        return resultado
+
+    # ── SE1: AO cambia verde → rojo ───────────────────────────────────────
+    ao_s      = awesome_osc(high, low)
+    ao_verde  = ao_s > ao_s.shift(1)
+    se1_activa = bool(not ao_verde.iloc[-1] and ao_verde.iloc[-2])
+    resultado["señales"]["SE1_AO"] = {
+        "nombre": "AO verde→rojo",
+        "activa": se1_activa,
+    }
+
+    # ── SE2: MACD cruza señal hacia abajo ─────────────────────────────────
+    diff        = macd_line - macd_sig
+    se2_activa  = bool(diff.iloc[-1] < 0 and diff.iloc[-2] >= 0)
+    resultado["señales"]["SE2_MACD"] = {
+        "nombre": "MACD cruce ↓",
+        "activa": se2_activa,
+    }
+
+    # ── SE3: PVI cruza EMA25 hacia abajo ──────────────────────────────────
+    se3_activa = bool(
+        pvi_s.iloc[-1] < pvi_ema.iloc[-1] and
+        pvi_s.iloc[-2] >= pvi_ema.iloc[-2]
+    )
+    resultado["señales"]["SE3_PVI"] = {
+        "nombre": "PVI cruza EMA25 ↓",
+        "activa": se3_activa,
+    }
+
+    # ── SE4: Bitman cambia a RETROCESO o INDEFINICIÓN ─────────────────────
+    if bitman_df is not None and not bitman_df.empty and len(bitman_df) >= 2:
+        etiq_now  = bitman_df["Bitman_Etiqueta"].iloc[-1]
+        etiq_prev = bitman_df["Bitman_Etiqueta"].iloc[-2]
+        se4_activa = bool(
+            etiq_now != "IMPULSO ALCISTA" and
+            etiq_prev == "IMPULSO ALCISTA"
+        )
+    else:
+        se4_activa = False
+    resultado["señales"]["SE4_BITMAN"] = {
+        "nombre": "Bitman pierde impulso",
+        "activa": se4_activa,
+    }
+
+    # ── Conteo y etiqueta ─────────────────────────────────────────────────
+    n_salida = sum(1 for s in resultado["señales"].values() if s["activa"])
+    resultado["n_salida"] = n_salida
+
+    if n_salida == 0:
+        etiqueta = "🟢 MANTENER"
+    elif n_salida == 1:
+        etiqueta = "🟡 VIGILAR POSICIÓN"
+    elif n_salida == 2:
+        etiqueta = "🟠 CONSIDERAR REDUCIR"
+    else:
+        etiqueta = "🔴 SALIDA"
+    resultado["etiqueta"] = etiqueta
+
+    # ── Texto razones ─────────────────────────────────────────────────────
+    partes = []
+    for s in resultado["señales"].values():
+        partes.append(
+            f"🔴 {s['nombre']}" if s["activa"] else f"🟢 {s['nombre']} ok"
+        )
+    resultado["razones"] = "  |  ".join(partes)
+
+    return resultado
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GET SOVEREIGN DASHBOARD V2 — usa la nueva lógica de señales
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_sovereign_dashboard_v2(tickers: list, progress_cb=None) -> pd.DataFrame:
+    """
+    Versión 2 del dashboard con nuevo sistema de señales.
+    Misma estructura de descarga e indicadores que v1.
+    Solo cambia la lógica de scoring final.
+    """
+    report = []
+    total  = len(tickers)
+
+    for idx_t, t in enumerate(tickers):
+        if progress_cb:
+            progress_cb(idx_t, total, t)
+        try:
+            df = download_df(t, period="2y", interval="1d")
+            if df.empty or len(df) < 150:
+                continue
+
+            close  = df["Close"]
+            volume = df["Volume"]
+            high   = df["High"]
+            low    = df["Low"]
+            precio = close.iloc[-1]
+
+            # indicadores (misma lógica que siempre)
+            kdf = compute_blai5_koncorde(df, m=15)
+            if kdf.empty:
+                continue
+            kdf = blai5_signals(kdf)
+
+            bitman_df = clasificar_bitman(df)
+            if bitman_df is None or bitman_df.empty:
+                continue
+
+            _, bbwp_s = calculate_bbwp(close, bb_len=13, lookback=252)
+
+            macd_obj  = MACD(close=close)
+            macd_line = macd_obj.macd()
+            macd_sig  = macd_obj.macd_signal()
+
+            pvi_s   = calculate_pvi(close, volume)
+            pvi_ema = pvi_s.ewm(span=25, adjust=False).mean()
+
+            rsi_s = RSIIndicator(close=close, window=14).rsi()
+
+            mcg25_val = mcginley_dynamic(close, 25).iloc[-1]
+            e200_val  = EMAIndicator(close=close, window=200).ema_indicator().iloc[-1]
+
+            # nuevo scoring v2
+            sv2 = calcular_señales_v2(
+                df=df, kdf=kdf, bitman_df=bitman_df,
+                bbwp_s=bbwp_s, macd_line=macd_line, macd_sig=macd_sig,
+                pvi_s=pvi_s, pvi_ema=pvi_ema, rsi_s=rsi_s,
+            )
+
+            # tendencia (igual que antes)
+            cerca_mcg  = mcg25_val * 0.988 <= precio <= mcg25_val * 1.012
+            cerca_e200 = e200_val  * 0.985 <= precio <= e200_val  * 1.015
+            s_mcg  = "🟡" if cerca_mcg  else ("🟢" if precio > mcg25_val else "🔴")
+            s_e200 = "🟡" if cerca_e200 else ("🟢" if precio > e200_val  else "🔴")
+
+            report.append({
+                "Ticker":    t,
+                "Precio":    f"{precio:.2f}",
+                "Tendencia": f"MCG:{s_mcg} E200:{s_e200}",
+                "Activas":   f"{sv2['n_activas']}/8",
+                "Frescas":   f"{sv2['n_frescas']}/6",
+                "Señal":     sv2["etiqueta"],
+                "Detalle":   sv2["razones"],
+            })
+
+        except Exception as e:
+            print(f"❌ {t}: {e}")
+            continue
+
+    result = pd.DataFrame(report)
+    if not result.empty:
+        orden = {
+            "🚀 POSITIVO CON MOMENTUM": 0,
+            "✅ POSITIVO":              1,
+            "⚠️ ATENCIÓN KONKORDE":    2,
+            "👀 EN DESARROLLO":         3,
+            "⏰ POSITIVO MADURO":       4,
+            "👀 VIGILAR":               5,
+            "⛔ SIN SETUP":             6,
+        }
+        result["_sort"] = result["Señal"].map(orden).fillna(7)
+        result = (result
+                  .sort_values(["_sort", "Ticker"])
+                  .drop(columns="_sort")
+                  .reset_index(drop=True))
+    return result
