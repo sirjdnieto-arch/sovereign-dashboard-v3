@@ -150,8 +150,8 @@ ALL_TICKERS = [
     "AAPL","MSFT","AMZN","NVDA","GOOG","META","BRK-B","TSLA","JNJ","V",
     "PG","XOM","UNH","JPM","HD","LLY","MA","CVX","ABBV","KO","PEP",
     "COST","BAC","CRM","NFLX","ABT","MCD","LMT","EL","NEE","CAT","MRK",
-    "TPL","ASML","ADBE","AVGO","CSCO","CMCSA","AMD","TXN","QCOM","AMAT","LITE","LRCX","COHR","NEE",
-    "NEM", "ULTA", "IT","FOXA","LUV","VLO", "ADP", "FN", "POET", "KEYS", "HPE", "MRVL", "AMAT",
+    "TPL","ASML","ADBE","AVGO","CSCO","CMCSA","AMD","TXN","QCOM","AMAT","LITE","LRCX","COHR","CMI",
+    "NEM", "ULTA", "IT","FOXA","LUV","VLO", "ADP", "FN", "POET", "KEYS", "HPE", "MRVL", "BRKR","AAOI",
     "INTU","VRTX","ZS","PLTR","CSU.TO","MU","LVMUY","SAP","OR.PA","TTE","SATS","ON","MELI","CTSH",
     "MC.PA","SIE.DE","ENGI.PA","AIR.PA","ALV.DE","EL.PA","AI.PA","BNP.PA",
     "SAN.PA","KER.PA","SU.PA","NESN.SW","LIN.DE","VOW3.DE","BMW.DE","ADS.DE",
@@ -159,7 +159,7 @@ ALL_TICKERS = [
     "TEF.MC","IBE.MC","REP.MC","FER.MC","ACX.MC","ACS.MC","AENA.MC","ANA.MC",
     "IAG.MC","LOG.MC","MAP.MC","PUIG.MC","NTGY.MC","ELE.MC","IDR.MC","PDD",
     "NIO","TCEHY","BZUN","FUTU","MOMO","MNSO","TAL","EDU","WB","XPEV",
-    "GC=F","SI=F","BTC-USD","ETH-USD","XRP-USD", "ETH-USD", "CRCL"
+    "GC=F","SI=F","BTC-USD","ETH-USD","XRP-USD", "SOL-USD", "CRCL"
 ]
 
 GRUPOS = {
