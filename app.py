@@ -1,9 +1,9 @@
 # app.py
 # ─────────────────────────────────────────────────────────────────────────────
 # Sovereign Dashboard v3  —  Streamlit  —  3 pestañas
-#   Tab 1 : Dashboard Señales  (nuevo scoring v2)
-#   Tab 2 : Gráficos Estrategia
-#   Tab 3 : Mi Cartera
+#   Tab 1 : Dashboard Señales  (scoring v2 + Sniper V6.2 INDEPENDIENTE)
+#   Tab 2 : Gráficos Estrategia (panel Sniper añadido)
+#   Tab 3 : Mi Cartera (columna Sniper añadida)
 # ─────────────────────────────────────────────────────────────────────────────
 
 import warnings
@@ -34,11 +34,13 @@ from indicators import (
     detectar_divergencia_simple,
     azul_z_score, calcular_velas_señal,
     semaforo, get_sovereign_dashboard,
-    # nuevas funciones v2
     calcular_señales_v2,
     semaforo_salida,
     get_sovereign_dashboard_v2,
 )
+
+# ── NUEVO: importar motor Sniper ──────────────────────────────────────────────
+from lcrack_sniper import calcular_motor_v62_sniper, get_sniper_status
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -125,6 +127,10 @@ STYLE = dict(
     ao_up="#26a65b",     ao_dn="#e04040",
     vol="#3a6ea8",       vol_ma="#efb030",
     grid="#1a1e28",      zero="#2a2e3a",
+    # Sniper
+    sniper_ultra="#00e5ff",
+    sniper_monitor="#efb030",
+    sniper_ignorar="#555a6a",
 )
 
 plt.rcParams.update({
@@ -143,7 +149,7 @@ plt.rcParams.update({
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TICKERS, GRUPOS E INTERVALOS
+# TICKERS, GRUPOS E INTERVALOS  (sin cambios)
 # ══════════════════════════════════════════════════════════════════════════════
 
 ALL_TICKERS = [
@@ -155,7 +161,7 @@ ALL_TICKERS = [
     "INTU","VRTX","ZS","PLTR","CSU.TO","MU","LVMUY","SAP","OR.PA","TTE","SATS","ON","MELI","CTSH","THRY","KLTR","QBTS","RGTI","IONQ",
     "MC.PA","SIE.DE","ENGI.PA","AIR.PA","ALV.DE","EL.PA","AI.PA","BNP.PA",
     "SAN.PA","KER.PA","SU.PA","NESN.SW","LIN.DE","VOW3.DE","BMW.DE","ADS.DE",
-    "IFX.DE","MUV2.DE","FRE.DE","DTE.DE","RWE.DE","ITX.MC","BBVA.MC","SAN.MC", 
+    "IFX.DE","MUV2.DE","FRE.DE","DTE.DE","RWE.DE","ITX.MC","BBVA.MC","SAN.MC",
     "TEF.MC","IBE.MC","REP.MC","FER.MC","ACX.MC","ACS.MC","AENA.MC","ANA.MC",
     "IAG.MC","LOG.MC","MAP.MC","PUIG.MC","NTGY.MC","ELE.MC","IDR.MC","PDD",
     "NIO","TCEHY","BZUN","FUTU","MOMO","MNSO","TAL","EDU","WB","XPEV",
@@ -233,7 +239,42 @@ def detectar_divisa(ticker: str) -> str:
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_dashboard_v2(tickers_tuple: tuple) -> pd.DataFrame:
-    return get_sovereign_dashboard_v2(list(tickers_tuple))
+    """
+    Llama a get_sovereign_dashboard_v2 y añade columnas Sniper independientes.
+    El scoring Pepino v2 NO se ve afectado por el Sniper.
+    """
+    df_result = get_sovereign_dashboard_v2(list(tickers_tuple))
+
+    if df_result.empty:
+        return df_result
+
+    # ── Calcular Sniper para cada ticker y añadir columnas ────────────────
+    sniper_states  = []
+    sniper_razones = []
+    sniper_velas   = []
+
+    for ticker in df_result["Ticker"]:
+        try:
+            raw = yf.download(
+                ticker, period="2y", interval="1d",
+                auto_adjust=True, progress=False, multi_level_index=False,
+            )
+            raw = clean_yf_df(raw)
+            if raw.empty or len(raw) < 120:
+                raise ValueError("Datos insuficientes para Sniper")
+            status = get_sniper_status(raw)
+        except Exception as e:
+            status = {"state": "IGNORAR", "razon": f"Error: {str(e)[:40]}", "velas": 999}
+
+        sniper_states.append(status["state"])
+        sniper_razones.append(status["razon"])
+        sniper_velas.append(status["velas"])
+
+    df_result["Sniper"]              = sniper_states
+    df_result["Sniper_Razón"]        = sniper_razones
+    df_result["Sniper_Velas"]        = sniper_velas
+
+    return df_result
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -261,6 +302,19 @@ def cached_chart_data(ticker: str, interval_key: str = "1D") -> dict:
     macd_obj  = MACD(close=close, window_fast=12, window_slow=26, window_sign=9)
     rsi_s     = RSIIndicator(close=close, window=14).rsi()
 
+    # ── NUEVO: Calcular Sniper (independiente) ────────────────────────────
+    sniper_state  = "IGNORAR"
+    sniper_razon  = ""
+    sniper_velas  = 999
+    try:
+        status = get_sniper_status(df.copy())
+        sniper_state = status["state"]
+        sniper_razon = status["razon"]
+        sniper_velas = status["velas"]
+    except Exception as e:
+        sniper_razon = f"Error Sniper: {str(e)[:50]}"
+    # ─────────────────────────────────────────────────────────────────────
+
     return dict(
         df=df, mcg25=mcg25, ema200=ema200,
         adx_s=adx_s, pdi_s=pdi_s, ndi_s=ndi_s,
@@ -271,6 +325,10 @@ def cached_chart_data(ticker: str, interval_key: str = "1D") -> dict:
         macd_sig=macd_obj.macd_signal(),
         macd_hist=macd_obj.macd_diff(),
         rsi_s=rsi_s,
+        # ── NUEVO ─────────────────────────────────────────────────────────
+        sniper_state=sniper_state,
+        sniper_razon=sniper_razon,
+        sniper_velas=sniper_velas,
     )
 
 
@@ -315,7 +373,7 @@ def panel_style(ax, ylabel: str = "", yticks: int = 5, zero_line: bool = False):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÑALES RESUMEN (Tab 2 — sin cambios)
+# SEÑALES RESUMEN — Tab 2 (sin cambios)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_signals(data: dict) -> list:
@@ -383,10 +441,33 @@ def score_signals(sigs: list) -> tuple:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# GRÁFICO MULTI-PANEL (Tab 2 — intacto)
+# HELPER: badge Sniper para UI
+# ══════════════════════════════════════════════════════════════════════════════
+
+def sniper_badge_html(state: str, velas: int = None) -> str:
+    """Devuelve HTML del badge Sniper coloreado."""
+    if state == "ULTRA-SAFE SNIPER":
+        emoji, color = "🔥", STYLE["sniper_ultra"]
+        label = f"🔥 ULTRA-SAFE SNIPER{f'  (v{velas})' if velas is not None else ''}"
+    elif state == "MONITOR":
+        emoji, color = "👁️", STYLE["sniper_monitor"]
+        label = f"👁️ MONITOR{f'  (v{velas})' if velas is not None else ''}"
+    else:
+        emoji, color = "❌", STYLE["sniper_ignorar"]
+        label = "❌ IGNORAR"
+    return (
+        f"<span style='color:{color};font-weight:bold;"
+        f"background:{color}22;padding:2px 10px;border-radius:99px;"
+        f"border:1px solid {color}55;font-size:0.85rem;'>{label}</span>"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GRÁFICO MULTI-PANEL — Tab 2 (intacto, sin cambios en los 8 paneles)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
+    # … (idéntico al original — los 8 paneles no se modifican)
     df        = data["df"]
     close     = df["Close"]
     high      = df["High"]
@@ -409,6 +490,9 @@ def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
     macd_sig  = data["macd_sig"]
     macd_hist = data["macd_hist"]
     rsi_s     = data["rsi_s"]
+    # ── NUEVO: estado Sniper para título/watermark ─────────────────────────
+    sniper_state = data.get("sniper_state", "IGNORAR")
+    sniper_velas = data.get("sniper_velas", 999)
 
     sigs                              = build_signals(data)
     pct, score_label, bull_n, total_n = score_signals(sigs)
@@ -449,6 +533,20 @@ def build_figure(data: dict, ticker: str, n_candles: int = 252) -> plt.Figure:
              fontsize=12, color=chg_c, va="bottom")
     fig.text(0.97, 0.965, f"{score_label}  ·  {bull_n}/{total_n}  ({pct}%)",
              fontsize=11, color=score_color, ha="right", va="bottom", style="italic")
+
+    # ── NUEVO: Sniper watermark en el panel 0 ─────────────────────────────
+    sniper_col = (STYLE["sniper_ultra"] if sniper_state == "ULTRA-SAFE SNIPER"
+                  else (STYLE["sniper_monitor"] if sniper_state == "MONITOR"
+                        else STYLE["sniper_ignorar"]))
+    sniper_lbl = (f"🔥 SNIPER ({sniper_velas}v)"
+                  if sniper_state == "ULTRA-SAFE SNIPER"
+                  else f"👁 MONITOR" if sniper_state == "MONITOR"
+                  else "SNIPER ❌")
+    fig.text(0.50, 0.965, sniper_lbl, fontsize=10, color=sniper_col,
+             ha="center", va="bottom", fontweight="bold",
+             bbox=dict(boxstyle="round,pad=0.3", facecolor=sniper_col+"22",
+                       edgecolor=sniper_col+"88", linewidth=0.8))
+    # ─────────────────────────────────────────────────────────────────────
 
     # PANEL 0 — Velas
     ax0 = axes[0]; w = 0.4
@@ -656,6 +754,13 @@ SALIDA_COLOR = {
     "🔴 SALIDA":               "#e04040",
 }
 
+# ── NUEVO: colores Sniper ─────────────────────────────────────────────────────
+SNIPER_COLOR = {
+    "ULTRA-SAFE SNIPER": "#00e5ff",
+    "MONITOR":           "#efb030",
+    "IGNORAR":           "#555a6a",
+}
+
 
 def color_señal_v2(val: str) -> str:
     col = SEÑAL_COLOR_V2.get(val, "#ffffff")
@@ -667,12 +772,21 @@ def color_salida(val: str) -> str:
     return f"color: {col}; font-weight: bold"
 
 
+def color_sniper(val: str) -> str:
+    """Coloriza la columna Sniper en tablas."""
+    col = SNIPER_COLOR.get(val, "#aaaaaa")
+    return f"color: {col}; font-weight: bold"
+
+
 def style_df_v2(df: pd.DataFrame):
     styler = df.style
     fn = styler.map if hasattr(styler, "map") else styler.applymap
+    s = fn(color_señal_v2, subset=["Señal"])
+    if "Sniper" in df.columns:
+        fn2 = s.map if hasattr(s, "map") else s.applymap
+        s = fn2(color_sniper, subset=["Sniper"])
     return (
-        fn(color_señal_v2, subset=["Señal"])
-        .set_properties(**{
+        s.set_properties(**{
             "background-color": "#13161e",
             "color":            "#ffffff",
             "border-color":     "#1f2430",
@@ -732,7 +846,7 @@ def mostrar_cambios():
 # MI CARTERA — persistencia CSV
 # ══════════════════════════════════════════════════════════════════════════════
 
-CARTERA_FILE = "cartera.csv"
+CARTERA_FILE   = "cartera.csv"
 HISTORIAL_FILE = "historial_operaciones.csv"
 
 CARTERA_COLS   = ["Ticker","Divisa","Precio_Entrada","Fecha_Entrada","Capital","Notas"]
@@ -821,6 +935,14 @@ with st.sidebar:
         "Tickers personalizados\n(uno por línea)", height=120, key="custom_tickers")
     force_refresh_tab1 = st.button("🔄 Recalcular semáforo", key="refresh1")
     st.markdown("---")
+    # ── NUEVO: opciones Sniper en sidebar ────────────────────────────────
+    st.markdown("### 🎯 Sniper V6.2")
+    mostrar_sniper_col = st.checkbox(
+        "Mostrar columna Sniper en tabla", value=True, key="mostrar_sniper")
+    solo_sniper = st.checkbox(
+        "Solo tickers con Sniper activo", value=False, key="solo_sniper")
+    st.markdown("---")
+    # ─────────────────────────────────────────────────────────────────────
     st.markdown(
         "<small style='color:#aaaaaa'>Datos: Yahoo Finance · Caché 1h<br>"
         "BBWP config 13/252 estructural</small>", unsafe_allow_html=True)
@@ -838,14 +960,14 @@ tab1, tab2, tab3 = st.tabs([
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 1 — Dashboard Señales (nuevo scoring v2)
+# TAB 1 — Dashboard Señales
 # ─────────────────────────────────────────────────────────────────────────────
 
 with tab1:
-    st.markdown("## 📊 Dashboard Señales — Sovereign v3")
+    st.markdown("## 📊 Dashboard Señales — Sovereign v3  +  🎯 Sniper V6.2")
     st.caption(
         "🚀 POSITIVO CON MOMENTUM = ≥6/8 activas y ≥4 frescas  ·  "
-        "Frescura = señal ocurrió en las últimas 3 velas  ·  "
+        "Sniper = indicador INDEPENDIENTE (no afecta scoring Pepino)  ·  "
         "🔥 = señal fresca"
     )
 
@@ -855,14 +977,14 @@ with tab1:
     else:
         tickers_tab1 = GRUPOS[grupo_sel]
 
-    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
     col_m1.metric("Tickers seleccionados", len(tickers_tab1))
 
     cache_key = tuple(sorted(tickers_tab1))
     if force_refresh_tab1:
         cached_dashboard_v2.clear()
 
-    with st.spinner(f"Calculando {len(tickers_tab1)} tickers…"):
+    with st.spinner(f"Calculando {len(tickers_tab1)} tickers + Sniper…"):
         pb  = st.progress(0)
         stx = st.empty()
         df_result = cached_dashboard_v2(cache_key)
@@ -877,23 +999,53 @@ with tab1:
     else:
         guardar_historico(df_result)
 
-        momentum_count = len(df_result[df_result["Señal"] == "🚀 POSITIVO CON MOMENTUM"])
-        positivo_count = len(df_result[df_result["Señal"].isin(
+        momentum_count  = len(df_result[df_result["Señal"] == "🚀 POSITIVO CON MOMENTUM"])
+        positivo_count  = len(df_result[df_result["Señal"].isin(
             ["🚀 POSITIVO CON MOMENTUM", "✅ POSITIVO", "⚠️ ATENCIÓN KONKORDE"])])
-        col_m2.metric("Procesados", len(df_result))
-        col_m3.metric("🚀 Con Momentum", momentum_count)
+        # ── NUEVO: contar Sniper ──────────────────────────────────────────
+        sniper_count = 0
+        if "Sniper" in df_result.columns:
+            sniper_count = len(df_result[df_result["Sniper"] == "ULTRA-SAFE SNIPER"])
+        # ─────────────────────────────────────────────────────────────────
+        col_m2.metric("Procesados",         len(df_result))
+        col_m3.metric("🚀 Con Momentum",    momentum_count)
         col_m4.metric("✅ Positivos total", positivo_count)
+        col_m5.metric("🔥 Sniper activo",   sniper_count)   # NUEVO
 
-        filtro_señal = st.multiselect(
-            "Filtrar por señal",
-            options=list(df_result["Señal"].unique()),
-            default=[],
-            key="filtro_señal",
-        )
-        df_show = (df_result[df_result["Señal"].isin(filtro_señal)]
-                   if filtro_señal else df_result)
+        # ── NUEVO: Filtros ────────────────────────────────────────────────
+        fc1, fc2 = st.columns([2, 1])
+        with fc1:
+            filtro_señal = st.multiselect(
+                "Filtrar por señal Pepino",
+                options=list(df_result["Señal"].unique()),
+                default=[],
+                key="filtro_señal",
+            )
+        with fc2:
+            filtro_sniper_tab1 = st.multiselect(
+                "🎯 Filtrar por Sniper",
+                options=["ULTRA-SAFE SNIPER", "MONITOR", "IGNORAR"],
+                default=[],
+                key="filtro_sniper_tab1",
+                help="Filtra por estado del motor LCrack V6.2"
+            )
+        # ─────────────────────────────────────────────────────────────────
 
-        cols_tabla = [c for c in df_show.columns if c != "Detalle"]
+        df_show = df_result.copy()
+        if filtro_señal:
+            df_show = df_show[df_show["Señal"].isin(filtro_señal)]
+        if filtro_sniper_tab1:
+            df_show = df_show[df_show["Sniper"].isin(filtro_sniper_tab1)]
+        # Checkbox sidebar: solo Sniper activo
+        if solo_sniper and "Sniper" in df_show.columns:
+            df_show = df_show[df_show["Sniper"] == "ULTRA-SAFE SNIPER"]
+
+        # ── Columnas a mostrar ────────────────────────────────────────────
+        cols_excluir = {"Detalle", "Sniper_Razón"}
+        if not mostrar_sniper_col:
+            cols_excluir.update({"Sniper", "Sniper_Velas"})
+        cols_tabla = [c for c in df_show.columns if c not in cols_excluir]
+
         st.dataframe(
             style_df_v2(df_show[cols_tabla]),
             use_container_width=True,
@@ -913,6 +1065,22 @@ with tab1:
                 use_container_width=True, height=400,
             )
 
+        # ── NUEVO: Expander Sniper ────────────────────────────────────────
+        with st.expander("🎯 Ver detalle Sniper V6.2"):
+            if "Sniper" in df_show.columns:
+                df_snip_det = df_show[["Ticker","Señal","Sniper","Sniper_Velas","Sniper_Razón"]].copy()
+                _ss = df_snip_det.style
+                _sf = _ss.map if hasattr(_ss, "map") else _ss.applymap
+                st.dataframe(
+                    _sf(color_sniper, subset=["Sniper"])
+                    .set_properties(**{
+                        "background-color":"#13161e","color":"#ffffff",
+                        "font-size":"0.72rem",
+                    }),
+                    use_container_width=True, height=400,
+                )
+        # ─────────────────────────────────────────────────────────────────
+
         with st.expander("📊 Cambios vs análisis anterior"):
             mostrar_cambios()
 
@@ -930,14 +1098,15 @@ with tab1:
 | 👀 VIGILAR | 3-4/8 activas sin frescura |
 | ⛔ SIN SETUP | <3 activas |
 
-**Las 8 señales:**  S1 MACD cruce↑  ·  S2 AO rojo→verde  ·  S3 PVI cruza EMA25↑  ·  
-S4 Azul K cruza 0↑  ·  S5 Media K en área  ·  S6 Bitman impulso↑  ·  
-S7 BBWP pendiente↑  ·  S8 Volumen confirm.  ·  🔥 = fresca (≤3v)
+**Sniper V6.2 (independiente):**
+  🔥 ULTRA-SAFE SNIPER = inercia macro >0.00045 + precio en zona + gatillo corto + BBWP [0.15-0.40]
+  👁️ MONITOR = inercia >0.00010 y precio ≤ regresión larga
+  ❌ IGNORAR = sin condiciones operativas
         """)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 2 — Gráficos (intacto)
+# TAB 2 — Gráficos
 # ─────────────────────────────────────────────────────────────────────────────
 
 with tab2:
@@ -992,6 +1161,18 @@ with tab2:
 
         now_str2 = datetime.now(timezone.utc).strftime("%d/%m/%Y  %H:%M UTC")
         st.caption(f"🕐 Última actualización: **{now_str2}**")
+
+        # ── NUEVO: Banner Sniper ───────────────────────────────────────────
+        sniper_state = chart_data.get("sniper_state", "IGNORAR")
+        sniper_razon = chart_data.get("sniper_razon", "")
+        sniper_velas = chart_data.get("sniper_velas", 999)
+
+        st.markdown(
+            f"🎯 **Sniper V6.2:** {sniper_badge_html(sniper_state, sniper_velas)}",
+            unsafe_allow_html=True,
+        )
+        st.caption(f"🔍 {sniper_razon}")
+        # ─────────────────────────────────────────────────────────────────
 
         df_c   = chart_data["df"]
         close  = df_c["Close"]
@@ -1053,7 +1234,7 @@ with tab2:
 
 with tab3:
     st.markdown("## 💼 Mi Cartera")
-    st.caption("Seguimiento de posiciones abiertas con semáforo de salida en tiempo real.")
+    st.caption("Seguimiento de posiciones abiertas con semáforo de salida + confirmación Sniper.")
 
     # ── Formulario añadir posición ────────────────────────────────────────
     with st.expander("➕ Añadir nueva posición", expanded=False):
@@ -1105,33 +1286,28 @@ with tab3:
         st.markdown(f"### Posiciones abiertas ({len(df_cartera)})")
         st.caption(f"🕐 Precios actualizados: {datetime.now(timezone.utc).strftime('%H:%M UTC')}")
 
-        # ── Calcular precios actuales y semáforos ─────────────────────────
         rows_display = []
 
         for idx, row in df_cartera.iterrows():
-            ticker        = row["Ticker"]
+            ticker         = row["Ticker"]
             precio_entrada = float(row["Precio_Entrada"])
-            capital       = float(row["Capital"])
-            divisa        = row["Divisa"]
-            fecha_entrada = row["Fecha_Entrada"]
+            capital        = float(row["Capital"])
+            divisa         = row["Divisa"]
+            fecha_entrada  = row["Fecha_Entrada"]
 
-            # precio actual
             precio_actual = get_precio_actual(ticker)
             if precio_actual <= 0:
                 precio_actual = precio_entrada
 
-            # P&L
             pnl_pct    = (precio_actual - precio_entrada) / precio_entrada * 100
             pnl_divisa = capital * pnl_pct / 100
 
-            # días en cartera
             try:
                 dias = (datetime.now(timezone.utc).date() -
                         pd.to_datetime(fecha_entrada).date()).days
             except Exception:
                 dias = "—"
 
-            # semáforo de salida
             with st.spinner(f"Calculando señales salida {ticker}…"):
                 chart_d = cached_chart_data(ticker, interval_key="1D")
 
@@ -1145,36 +1321,45 @@ with tab3:
                     pvi_s=chart_d["pvi_s"],
                     pvi_ema=chart_d["pvi_ema"],
                 )
-                etiq_salida   = sal["etiqueta"]
+                etiq_salida    = sal["etiqueta"]
                 razones_salida = sal["razones"]
+                # ── NUEVO: Sniper de la cartera ───────────────────────────
+                sniper_cart_state = chart_d.get("sniper_state", "IGNORAR")
+                sniper_cart_velas = chart_d.get("sniper_velas", 999)
             else:
-                etiq_salida    = "⚪ Sin datos"
-                razones_salida = ""
+                etiq_salida       = "⚪ Sin datos"
+                razones_salida    = ""
+                sniper_cart_state = "IGNORAR"
+                sniper_cart_velas = 999
 
             rows_display.append({
-                "idx":           idx,
-                "Ticker":        ticker,
-                "Divisa":        divisa,
-                "Entrada":       f"{precio_entrada:.4f}",
-                "Actual":        f"{precio_actual:.4f}",
-                "P&L %":         f"{pnl_pct:+.2f}%",
-                "P&L":           f"{pnl_divisa:+.2f} {divisa}",
-                "Días":          dias,
-                "Fecha entrada": fecha_entrada,
-                "Semáforo":      etiq_salida,
-                "Razones salida": razones_salida,
-                "Notas":         row.get("Notas",""),
+                "idx":             idx,
+                "Ticker":          ticker,
+                "Divisa":          divisa,
+                "Entrada":         f"{precio_entrada:.4f}",
+                "Actual":          f"{precio_actual:.4f}",
+                "P&L %":           f"{pnl_pct:+.2f}%",
+                "P&L":             f"{pnl_divisa:+.2f} {divisa}",
+                "Días":            dias,
+                "Fecha entrada":   fecha_entrada,
+                "Semáforo":        etiq_salida,
+                "Sniper":          sniper_cart_state,      # NUEVO
+                "Sniper_Velas":    sniper_cart_velas,      # NUEVO
+                "Razones salida":  razones_salida,
+                "Notas":           row.get("Notas",""),
             })
 
         # ── Tabla resumen ──────────────────────────────────────────────────
         df_display = pd.DataFrame(rows_display)
         cols_tabla = ["Ticker","Divisa","Entrada","Actual","P&L %","P&L",
-                      "Días","Fecha entrada","Semáforo"]
+                      "Días","Fecha entrada","Semáforo","Sniper"]   # NUEVO
 
         styler = df_display[cols_tabla].style
         fn     = styler.map if hasattr(styler, "map") else styler.applymap
+        s1 = fn(color_salida, subset=["Semáforo"])
+        fn2 = s1.map if hasattr(s1, "map") else s1.applymap
         st.dataframe(
-            fn(color_salida, subset=["Semáforo"])
+            fn2(color_sniper, subset=["Sniper"])           # NUEVO
             .set_properties(**{
                 "background-color": "#13161e",
                 "color":            "#ffffff",
@@ -1193,15 +1378,15 @@ with tab3:
         st.markdown("### 🔍 Detalle por posición")
 
         for row_d in rows_display:
-            ticker    = row_d["Ticker"]
-            etiq      = row_d["Semáforo"]
-            col_etiq  = SALIDA_COLOR.get(etiq, "#ffffff")
-            pnl_color = "green" if "+" in row_d["P&L %"] else "red"
+            ticker   = row_d["Ticker"]
+            etiq     = row_d["Semáforo"]
+            snip_st  = row_d["Sniper"]
+            snip_vl  = row_d["Sniper_Velas"]
+            col_etiq = SALIDA_COLOR.get(etiq, "#ffffff")
 
             with st.expander(
                 f"{'🔴' if 'SALIDA' in etiq else '🟠' if 'REDUCIR' in etiq else '🟡' if 'VIGILAR' in etiq else '🟢'}"
-                f"  {ticker}  —  "
-                f"P&L: {row_d['P&L %']}  ·  {etiq}"
+                f"  {ticker}  —  P&L: {row_d['P&L %']}  ·  {etiq}"
             ):
                 dc1, dc2, dc3, dc4 = st.columns(4)
                 dc1.metric("Entrada",  row_d["Entrada"])
@@ -1215,10 +1400,16 @@ with tab3:
                     unsafe_allow_html=True)
                 st.caption(f"Señales: {row_d['Razones salida']}")
 
+                # ── NUEVO: Sniper en detalle posición ─────────────────────
+                st.markdown(
+                    f"**Confirmación Sniper:** {sniper_badge_html(snip_st, snip_vl)}",
+                    unsafe_allow_html=True,
+                )
+                # ─────────────────────────────────────────────────────────
+
                 if row_d["Notas"]:
                     st.caption(f"📝 {row_d['Notas']}")
 
-                # cerrar posición
                 st.markdown("**Cerrar posición:**")
                 cc1, cc2 = st.columns([2, 1])
                 with cc1:
@@ -1248,14 +1439,16 @@ with tab3:
             total = sum(float(r["P&L"].split()[0].replace(",",".")) for r in rows)
             return total
 
-        rs1, rs2, rs3 = st.columns(3)
+        rs1, rs2, rs3, rs4 = st.columns(4)
         rs1.metric("Posiciones abiertas", len(rows_display))
+        # ── NUEVO: contar Sniper activo en cartera ────────────────────────
+        sniper_en_cartera = sum(1 for r in rows_display if r["Sniper"] == "ULTRA-SAFE SNIPER")
+        rs4.metric("🔥 Sniper activo", sniper_en_cartera)
+        # ─────────────────────────────────────────────────────────────────
         if usd_rows:
-            rs2.metric("P&L total USD",
-                       f"{calcular_pnl_total(usd_rows):+.2f} $")
+            rs2.metric("P&L total USD", f"{calcular_pnl_total(usd_rows):+.2f} $")
         if eur_rows:
-            rs3.metric("P&L total EUR",
-                       f"{calcular_pnl_total(eur_rows):+.2f} €")
+            rs3.metric("P&L total EUR", f"{calcular_pnl_total(eur_rows):+.2f} €")
 
     # ── Historial de operaciones cerradas ─────────────────────────────────
     st.markdown("---")
@@ -1283,7 +1476,6 @@ with tab3:
             use_container_width=True,
         )
 
-        # resumen historial
         if "PnL_pct" in df_hist.columns:
             ganadas  = len(df_hist[df_hist["PnL_pct"] > 0])
             perdidas = len(df_hist[df_hist["PnL_pct"] <= 0])
@@ -1293,3 +1485,4 @@ with tab3:
             rh2.metric("Ganadoras", ganadas)
             rh3.metric("Perdedoras", perdidas)
             rh4.metric("P&L medio", f"{media:+.2f}%")
+
