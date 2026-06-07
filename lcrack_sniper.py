@@ -1,11 +1,11 @@
 # lcrack_sniper.py
 # ─────────────────────────────────────────────────────────────────────────────
-# Motor LCrack V6.2 Sniper - Separado para modularidad
+# Motor LCrack V6.2 Sniper - Señal independiente de filtrado/confirmación
 # ─────────────────────────────────────────────────────────────────────────────
 
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+
 
 def calcular_motor_v62_sniper(df: pd.DataFrame) -> pd.DataFrame:
     """
