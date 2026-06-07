@@ -13,6 +13,11 @@ import yfinance as yf
 from ta.trend  import MACD, EMAIndicator, ADXIndicator
 from ta.momentum import RSIIndicator
 
+# ─────────────────────────────────────────────────────────────────────────────
+# IMPORTAR SNIPER (nuevo)
+# ─────────────────────────────────────────────────────────────────────────────
+from lcrack_sniper import calcular_motor_v62_sniper
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DESCARGA Y LIMPIEZA
@@ -704,6 +709,18 @@ def get_sovereign_dashboard(tickers: list, progress_cb=None) -> pd.DataFrame:
             )
             analisis = semaforo(input_data, velas_señal)
 
+            # ── NUEVO: Calcular Sniper para este ticker ──────────────────────
+            try:
+                df_sniper = calcular_motor_v62_sniper(df.copy())
+                sniper_state = df_sniper["Sniper_State"].iloc[-1] if not df_sniper.empty else "IGNORAR"
+                sniper_razon = df_sniper["Sniper_Detalle"].iloc[-1] if not df_sniper.empty else ""
+                sniper_velas = df_sniper["Sniper_Velas_Activacion"].iloc[-1] if not df_sniper.empty else 999
+            except Exception as e:
+                sniper_state = "IGNORAR"
+                sniper_razon = f"Error Sniper: {str(e)[:30]}"
+                sniper_velas = 999
+            # ─────────────────────────────────────────────────────────────
+
             report.append(dict(
                 Ticker=t, Tendencia=trend_str, RSI=rsi_str, MACD=macd_str,
                 Koncorde=konk_str, PVI=pvi_str, Bitman=bitman_str,
@@ -711,6 +728,10 @@ def get_sovereign_dashboard(tickers: list, progress_cb=None) -> pd.DataFrame:
                 **{"Velas⏱": velas_str},
                 Score=analisis["score"], Señal=analisis["decision"],
                 Razones=analisis["razones"],
+                # ── NUEVO: Añadir Sniper al reporte ────────────────────────────
+                Sniper_Estado=sniper_state,
+                Sniper_Razón=sniper_razon,
+                Sniper_Velas=sniper_velas,
             ))
 
         except Exception as e:
@@ -731,9 +752,8 @@ def get_sovereign_dashboard(tickers: list, progress_cb=None) -> pd.DataFrame:
     return result
 
 
-
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÑALES V2 — nuevo sistema de scoring con frescura
+# SEÑALES V2 — sistema de scoring con frescura
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _velas_desde_cruce(serie_bool: pd.Series) -> int:
@@ -765,27 +785,6 @@ def calcular_señales_v2(
 ) -> dict:
     """
     Nuevo sistema de señales con distinción estado / frescura.
-
-    Señales POTENTES (máx 6, con frescura ≤3 velas):
-      S1  MACD cruce alcista
-      S2  AO cambia rojo→verde
-      S3  PVI cruza EMA25 hacia arriba
-      S4  Azul Koncorde cruza cero hacia arriba
-      S5  Media Koncorde entra en área
-      S6  Bitman cambia a IMPULSO ALCISTA
-
-    Señales INFORMATIVAS (máx 2, sin frescura):
-      S7  BBWP pendiente positiva y > 20
-      S8  Volumen confirmatorio > 1.3x MA20 con cierre positivo
-
-    Señales INFORMATIVAS EXTRA (texto, sin puntuación):
-      SI1 Precio en entorno MCG25 ±1.2%
-      SI2 Precio en entorno EMA200 ±1.5%
-      SI3 Azul+ y Verde- (Atención Konkorde)
-      SI4 Azul subiendo (slope positivo)
-      SI5 Divergencia RSI alcista ≤15v
-
-    Retorna dict con todo el detalle para mostrar en dashboard.
     """
     UMBRAL_FRESCURA = 3   # velas
     resultado = {
@@ -1119,14 +1118,13 @@ def semaforo_salida(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# GET SOVEREIGN DASHBOARD V2 — usa la nueva lógica de señales
+# GET SOVEREIGN DASHBOARD V2 — usa la nueva lógica de señales + SNIPER
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_sovereign_dashboard_v2(tickers: list, progress_cb=None) -> pd.DataFrame:
     """
     Versión 2 del dashboard con nuevo sistema de señales.
-    Misma estructura de descarga e indicadores que v1.
-    Solo cambia la lógica de scoring final.
+    Incluye el motor LCrack V6.2 Sniper como señal independiente.
     """
     report = []
     total  = len(tickers)
@@ -1169,6 +1167,18 @@ def get_sovereign_dashboard_v2(tickers: list, progress_cb=None) -> pd.DataFrame:
             mcg25_val = mcginley_dynamic(close, 25).iloc[-1]
             e200_val  = EMAIndicator(close=close, window=200).ema_indicator().iloc[-1]
 
+            # ── NUEVO: Calcular Sniper ──────────────────────────────────────
+            try:
+                df_sniper = calcular_motor_v62_sniper(df.copy())
+                sniper_state = df_sniper["Sniper_State"].iloc[-1] if not df_sniper.empty else "IGNORAR"
+                sniper_razon = df_sniper["Sniper_Detalle"].iloc[-1] if not df_sniper.empty else ""
+                sniper_velas = df_sniper["Sniper_Velas_Activacion"].iloc[-1] if not df_sniper.empty else 999
+            except Exception as e:
+                sniper_state = "IGNORAR"
+                sniper_razon = f"Error Sniper: {str(e)[:30]}"
+                sniper_velas = 999
+            # ─────────────────────────────────────────────────────────────
+
             # nuevo scoring v2
             sv2 = calcular_señales_v2(
                 df=df, kdf=kdf, bitman_df=bitman_df,
@@ -1190,6 +1200,10 @@ def get_sovereign_dashboard_v2(tickers: list, progress_cb=None) -> pd.DataFrame:
                 "Frescas":   f"{sv2['n_frescas']}/6",
                 "Señal":     sv2["etiqueta"],
                 "Detalle":   sv2["razones"],
+                # ── NUEVO: Columnas Sniper ────────────────────────────────────
+                "Sniper_Estado": sniper_state,
+                "Sniper_Razón": sniper_razon,
+                "Sniper_Velas": sniper_velas,
             })
 
         except Exception as e:
@@ -1208,8 +1222,7 @@ def get_sovereign_dashboard_v2(tickers: list, progress_cb=None) -> pd.DataFrame:
             "⛔ SIN SETUP":             6,
         }
         result["_sort"] = result["Señal"].map(orden).fillna(7)
-        result = (result
-                  .sort_values(["_sort", "Ticker"])
-                  .drop(columns="_sort")
-                  .reset_index(drop=True))
+        result = (result.sort_values(["_sort", "Ticker"])
+                        .drop(columns="_sort")
+                        .reset_index(drop=True))
     return result
